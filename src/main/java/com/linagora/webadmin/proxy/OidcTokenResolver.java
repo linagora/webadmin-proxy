@@ -78,7 +78,8 @@ public class OidcTokenResolver {
 
         validateExpectedClaims(clientConfiguration, userInfo);
 
-        return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo));
+        Optional<String> sessionId = Optional.ofNullable(introspect.json().get("sid")).map(JsonNode::asText);
+        return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo, sessionId));
     }
 
     private void validateExpectedClaims(ClientConfiguration clientConfiguration, UserinfoResponse userInfo) {

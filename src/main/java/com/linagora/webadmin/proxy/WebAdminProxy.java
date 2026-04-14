@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
+import org.apache.james.lifecycle.api.Startable;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,7 +38,7 @@ import reactor.netty.http.server.HttpServerRequest;
 import reactor.netty.http.server.HttpServerResponse;
 
 @Singleton
-public class WebAdminProxy {
+public class WebAdminProxy implements Startable {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxy.class);
     private static final String HOST_HEADER = "Host";

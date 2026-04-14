@@ -20,7 +20,9 @@ import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.MediaType.APPLICATION_JSON;
 
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -77,7 +79,7 @@ class WebAdminProxyIntegrationTest {
         Map<String, ClientConfiguration> clients = Map.of(
             CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of()));
 
-        return new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+        return new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
     }
 
     @AfterEach
@@ -555,7 +557,7 @@ class WebAdminProxyIntegrationTest {
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
                     "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of()));
-            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
         }
@@ -733,7 +735,7 @@ class WebAdminProxyIntegrationTest {
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
                     "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions));
-            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
         }
@@ -936,7 +938,7 @@ class WebAdminProxyIntegrationTest {
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
                     "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions));
-            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
         }
@@ -1074,7 +1076,7 @@ class WebAdminProxyIntegrationTest {
                     List.of(),
                     Map.of()));
 
-            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
         }
@@ -1181,6 +1183,180 @@ class WebAdminProxyIntegrationTest {
                 .get("/domains");
 
             assertThat(response.statusCode()).isEqualTo(401);
+        }
+    }
+
+    @Nested
+    class BackchannelLogout {
+
+        static final String SESSION_ID = "session-abc-123";
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of()));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.of(0));
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void stubValidTokenWithSid() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\",\"sid\":\"" + SESSION_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        }
+
+        /** Builds a minimal unsigned JWT: header.payload. */
+        static String buildLogoutToken(String sid) {
+            String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8));
+            String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(("{\"sid\":\"" + sid + "\"}").getBytes(StandardCharsets.UTF_8));
+            return header + "." + payload + ".";
+        }
+
+        @Test
+        void shouldReturn200OnValidBackchannelLogout() {
+            stubValidTokenWithSid();
+
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken(SESSION_ID))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+        }
+
+        @Test
+        void shouldInvalidateCachedTokenAfterBackchannelLogout() throws Exception {
+            stubValidTokenWithSid();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // Warm up the cache with a valid request
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            // Token was cached — OIDC endpoints called exactly once
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+
+            // Backchannel logout invalidates the session
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken(SESSION_ID))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            // Next request must re-validate with OIDC
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
+        }
+
+        @Test
+        void shouldNotInvalidateTokensFromDifferentSession() throws Exception {
+            stubValidTokenWithSid();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // Warm up the cache
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+
+            // Logout with a different session id
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken("other-session-id"))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            // Cache should still be intact — no new OIDC call
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+        }
+
+        @Test
+        void shouldReturn415WhenContentTypeIsNotFormUrlEncoded() {
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/json")
+                .body("{\"logout_token\":\"some-token\"}")
+            .when().post("/backchannel-logout")
+            .then().statusCode(415);
+        }
+
+        @Test
+        void shouldReturn400WhenLogoutTokenIsMissing() {
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("other_param=value")
+            .when().post("/backchannel-logout")
+            .then().statusCode(400);
+        }
+
+        @Test
+        void shouldReturn400WhenLogoutTokenIsNotAJwt() {
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=not-a-jwt")
+            .when().post("/backchannel-logout")
+            .then().statusCode(400);
+        }
+
+        @Test
+        void shouldReturn400WhenLogoutTokenHasNoSidClaim() {
+            String header = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8));
+            String payload = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString("{\"sub\":\"user\"}".getBytes(StandardCharsets.UTF_8));
+            String token = header + "." + payload + ".";
+
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + token)
+            .when().post("/backchannel-logout")
+            .then().statusCode(400);
         }
     }
 }

@@ -16,10 +16,15 @@ package com.linagora.webadmin.proxy;
 import java.util.Map;
 
 import org.apache.james.jwt.DefaultCheckTokenClient;
+import org.apache.james.modules.StartablesModule;
+import org.apache.james.utils.InitializationOperation;
+import org.apache.james.utils.InitilizationOperationBuilder;
 
 import com.google.inject.AbstractModule;
 import com.google.inject.Scopes;
 import com.google.inject.TypeLiteral;
+import com.google.inject.multibindings.Multibinder;
+import com.google.inject.multibindings.ProvidesIntoSet;
 
 public class WebAdminProxyModule extends AbstractModule {
 
@@ -31,6 +36,9 @@ public class WebAdminProxyModule extends AbstractModule {
 
     @Override
     protected void configure() {
+        install(new StartablesModule());
+        Multibinder.newSetBinder(binder(), InitializationOperation.class);
+
         bind(WebAdminProxyConfiguration.class).toInstance(configuration);
         bind(OidcConfiguration.class).toInstance(configuration.oidcConfiguration());
         bind(new TypeLiteral<Map<String, ClientConfiguration>>() {}).toInstance(configuration.clients());
@@ -38,5 +46,14 @@ public class WebAdminProxyModule extends AbstractModule {
         bind(OidcTokenResolver.class).in(Scopes.SINGLETON);
         bind(OidcTokenCache.class).to(CaffeineOidcTokenCache.class).in(Scopes.SINGLETON);
         bind(WebAdminProxy.class).in(Scopes.SINGLETON);
+
+        configuration.selfAdminPort().ifPresent(port -> install(new SelfAdminModule(port)));
+    }
+
+    @ProvidesIntoSet
+    InitializationOperation webAdminProxyStart(WebAdminProxy instance) {
+        return InitilizationOperationBuilder
+            .forClass(WebAdminProxy.class)
+            .init(instance::start);
     }
 }

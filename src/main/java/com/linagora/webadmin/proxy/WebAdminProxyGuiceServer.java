@@ -13,11 +13,16 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.util.Optional;
+
+import org.apache.james.utils.InitializationOperations;
+import org.apache.james.webadmin.WebAdminServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.inject.Guice;
 import com.google.inject.Injector;
+import com.google.inject.Key;
 import com.google.inject.Module;
 
 public class WebAdminProxyGuiceServer {
@@ -25,6 +30,7 @@ public class WebAdminProxyGuiceServer {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxyGuiceServer.class);
 
     private final Module module;
+    private Injector injector;
     private WebAdminProxy proxy;
 
     public static WebAdminProxyGuiceServer forModule(Module module) {
@@ -37,9 +43,9 @@ public class WebAdminProxyGuiceServer {
 
     public void start() {
         LOGGER.info("Starting WebAdmin proxy server");
-        Injector injector = Guice.createInjector(module);
+        injector = Guice.createInjector(module);
         proxy = injector.getInstance(WebAdminProxy.class);
-        proxy.start();
+        injector.getInstance(InitializationOperations.class).initModules();
         LOGGER.info("WebAdmin proxy server started");
     }
 
@@ -48,10 +54,18 @@ public class WebAdminProxyGuiceServer {
         if (proxy != null) {
             proxy.stop();
         }
+        Optional.ofNullable(injector)
+            .map(i -> i.getExistingBinding(Key.get(WebAdminServer.class)))
+            .map(binding -> binding.getProvider().get())
+            .ifPresent(WebAdminServer::destroy);
         LOGGER.info("WebAdmin proxy server stopped");
     }
 
     public int getPort() {
         return proxy.getPort();
+    }
+
+    public int getAdminPort() {
+        return injector.getInstance(WebAdminServer.class).getPort().getValue();
     }
 }

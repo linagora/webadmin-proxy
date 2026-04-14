@@ -37,7 +37,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public record WebAdminProxyConfiguration(int port,
                                           OidcConfiguration oidcConfiguration,
-                                          Map<String, ClientConfiguration> clients) {
+                                          Map<String, ClientConfiguration> clients,
+                                          Optional<Integer> selfAdminPort) {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxyConfiguration.class);
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\{ENV:([^}]+)\\}");
@@ -105,9 +106,12 @@ public record WebAdminProxyConfiguration(int port,
                 urlPatternRestrictions));
         }
 
-        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients);
-        LOGGER.info("Configuration loaded: port={}, audience={}, userClaim={}, clients={}",
-            port, audience, userClaim, clients.keySet());
+        Optional<Integer> selfAdminPort = Optional.ofNullable(root.get("self.webadmin.port"))
+            .map(node -> Integer.parseInt(resolve(node.asText())));
+
+        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort);
+        LOGGER.info("Configuration loaded: port={}, selfAdminPort={}, audience={}, userClaim={}, clients={}",
+            port, selfAdminPort.map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
         return config;
     }
 

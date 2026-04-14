@@ -17,4 +17,6 @@ import reactor.core.publisher.Mono;
 
 public interface OidcTokenCache {
     Mono<AuthenticatedRequest> resolve(String bearerToken);
+
+    Mono<Void> invalidateBySid(String sid);
 }
