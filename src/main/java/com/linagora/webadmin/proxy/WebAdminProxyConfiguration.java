@@ -38,7 +38,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 public record WebAdminProxyConfiguration(int port,
                                           OidcConfiguration oidcConfiguration,
                                           Map<String, ClientConfiguration> clients,
-                                          Optional<Integer> selfAdminPort) {
+                                          Optional<Integer> selfAdminPort,
+                                          boolean selfAdminEnabled) {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxyConfiguration.class);
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\{ENV:([^}]+)\\}");
@@ -114,10 +115,13 @@ public record WebAdminProxyConfiguration(int port,
 
         Optional<Integer> selfAdminPort = Optional.ofNullable(root.get("self.webadmin.port"))
             .map(node -> Integer.parseInt(resolve(node.asText())));
+        boolean selfAdminEnabled = Optional.ofNullable(root.get("self.webadmin.enabled"))
+            .map(node -> Boolean.parseBoolean(resolve(node.asText())))
+            .orElse(false);
 
-        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort);
-        LOGGER.info("Configuration loaded: port={}, selfAdminPort={}, audience={}, userClaim={}, clients={}",
-            port, selfAdminPort.map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
+        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled);
+        LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audience={}, userClaim={}, clients={}",
+            port, selfAdminEnabled, selfAdminPort.map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
         return config;
     }
 

@@ -15,6 +15,7 @@ package com.linagora.webadmin.proxy;
 
 import java.util.Optional;
 
+import org.apache.james.IsStartedProbe;
 import org.apache.james.utils.InitializationOperations;
 import org.apache.james.webadmin.WebAdminServer;
 import org.slf4j.Logger;
@@ -46,11 +47,15 @@ public class WebAdminProxyGuiceServer {
         injector = Guice.createInjector(module);
         proxy = injector.getInstance(WebAdminProxy.class);
         injector.getInstance(InitializationOperations.class).initModules();
+        injector.getInstance(IsStartedProbe.class).notifyStarted();
         LOGGER.info("WebAdmin proxy server started");
     }
 
     public void stop() {
         LOGGER.info("Stopping WebAdmin proxy server");
+        Optional.ofNullable(injector)
+            .map(i -> i.getInstance(IsStartedProbe.class))
+            .ifPresent(IsStartedProbe::notifyStoped);
         if (proxy != null) {
             proxy.stop();
         }

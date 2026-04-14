@@ -97,7 +97,15 @@
         </dependency>
         <dependency>
             <groupId>${james.groupId}</groupId>
+            <artifactId>metrics-dropwizard</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
             <artifactId>metrics-logger</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${james.groupId}</groupId>
+            <artifactId>james-server-webadmin-dropwizard-metrics</artifactId>
         </dependency>
         <dependency>
             <groupId>ch.qos.logback</groupId>

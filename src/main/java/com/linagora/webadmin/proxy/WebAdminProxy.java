@@ -23,6 +23,8 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
 import org.apache.james.lifecycle.api.Startable;
+import org.apache.james.metrics.api.Metric;
+import org.apache.james.metrics.api.MetricFactory;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,12 +50,15 @@ public class WebAdminProxy implements Startable {
     private final WebAdminProxyConfiguration configuration;
     private final OidcTokenCache tokenCache;
     private final Map<String, HttpClient> backendClients;
+    private final Metric requestsMetric;
     private DisposableServer server;
 
     @Inject
-    public WebAdminProxy(WebAdminProxyConfiguration configuration, OidcTokenCache tokenCache) {
+    public WebAdminProxy(WebAdminProxyConfiguration configuration, OidcTokenCache tokenCache,
+                          MetricFactory metricFactory) {
         this.configuration = configuration;
         this.tokenCache = tokenCache;
+        this.requestsMetric = metricFactory.generate("webadmin.proxy.requests");
         this.backendClients = configuration.clients().entrySet().stream()
             .collect(Collectors.toMap(
                 Map.Entry::getKey,
@@ -160,6 +165,7 @@ public class WebAdminProxy implements Startable {
                                           byte[] payload, AuthenticatedRequest auth) {
         LOGGER.debug("Proxying request: method={}, endpoint={}, clientId={}, user={}",
             request.method().name(), request.uri(), auth.clientId(), auth.user());
+        requestsMetric.increment();
         HttpClient backendClient = backendClients.get(auth.clientId());
         String webadminToken = auth.clientConfiguration().webadminToken();
         return Mono.from(backendClient

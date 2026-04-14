@@ -18,8 +18,9 @@ import java.util.Set;
 
 import jakarta.inject.Named;
 
-import org.apache.james.metrics.api.MetricFactory;
-import org.apache.james.metrics.logger.DefaultMetricFactory;
+import org.apache.james.GuiceLifecycleHealthCheck;
+import org.apache.james.core.healthcheck.HealthCheck;
+import org.apache.james.metrics.dropwizard.DropWizardMetricFactory;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 import org.apache.james.webadmin.FixedPortSupplier;
@@ -30,10 +31,15 @@ import org.apache.james.webadmin.WebAdminConfiguration;
 import org.apache.james.webadmin.WebAdminServer;
 import org.apache.james.webadmin.authentication.AuthenticationFilter;
 import org.apache.james.webadmin.authentication.NoAuthenticationFilter;
+import org.apache.james.webadmin.dropwizard.MetricsRoutes;
 import org.apache.james.webadmin.mdc.LoggingRequestFilter;
 import org.apache.james.webadmin.mdc.RequestLogger;
+import org.apache.james.webadmin.routes.HealthCheckRoutes;
+import org.apache.james.webadmin.utils.JsonTransformer;
+import org.apache.james.webadmin.utils.JsonTransformerModule;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.AbstractModule;
 import com.google.inject.Provides;
 import com.google.inject.Scopes;
@@ -52,9 +58,20 @@ public class SelfAdminModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(WebAdminServer.class).in(Scopes.SINGLETON);
+        bind(JsonTransformer.class).in(Scopes.SINGLETON);
+        bind(DropWizardMetricFactory.class).in(Scopes.SINGLETON);
+
         bind(BackchannelLogoutRoutes.class).in(Scopes.SINGLETON);
-        Multibinder.newSetBinder(binder(), Routes.class).addBinding().to(BackchannelLogoutRoutes.class);
+        bind(MetricsRoutes.class).in(Scopes.SINGLETON);
+        bind(HealthCheckRoutes.class).in(Scopes.SINGLETON);
+
+        Multibinder<Routes> routesBinder = Multibinder.newSetBinder(binder(), Routes.class);
+        routesBinder.addBinding().to(BackchannelLogoutRoutes.class);
+        routesBinder.addBinding().to(MetricsRoutes.class);
+        routesBinder.addBinding().to(HealthCheckRoutes.class);
+
         Multibinder.newSetBinder(binder(), RequestLogger.class);
+        Multibinder.newSetBinder(binder(), JsonTransformerModule.class);
     }
 
     @Provides
@@ -62,6 +79,13 @@ public class SelfAdminModule extends AbstractModule {
     @Named("webAdminRoutes")
     public List<Routes> provideRoutes(Set<Routes> routes) {
         return ImmutableList.copyOf(routes);
+    }
+
+    @Provides
+    @Singleton
+    @Named("resolved-checks")
+    public Set<HealthCheck> provideHealthChecks(GuiceLifecycleHealthCheck lifecycleHealthCheck) {
+        return ImmutableSet.of(lifecycleHealthCheck);
     }
 
     @Provides
@@ -84,12 +108,6 @@ public class SelfAdminModule extends AbstractModule {
 
     @Provides
     @Singleton
-    public MetricFactory provideMetricFactory() {
-        return new DefaultMetricFactory();
-    }
-
-    @Provides
-    @Singleton
     public LoggingRequestFilter provideLoggingRequestFilter(Set<RequestLogger> requestLoggers) {
         return new LoggingRequestFilter(requestLoggers);
     }
@@ -98,6 +116,13 @@ public class SelfAdminModule extends AbstractModule {
     public InitializationOperation webAdminServerStart(WebAdminServer instance) {
         return InitilizationOperationBuilder
             .forClass(WebAdminServer.class)
+            .init(instance::start);
+    }
+
+    @ProvidesIntoSet
+    public InitializationOperation dropWizardMetricFactoryStart(DropWizardMetricFactory instance) {
+        return InitilizationOperationBuilder
+            .forClass(DropWizardMetricFactory.class)
             .init(instance::start);
     }
 }

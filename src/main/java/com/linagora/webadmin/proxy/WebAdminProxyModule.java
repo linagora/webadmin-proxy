@@ -15,13 +15,20 @@ package com.linagora.webadmin.proxy;
 
 import java.util.Map;
 
+import org.apache.james.IsStartedProbe;
 import org.apache.james.jwt.DefaultCheckTokenClient;
+import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.metrics.dropwizard.DropWizardMetricFactory;
+import org.apache.james.metrics.logger.DefaultMetricFactory;
 import org.apache.james.modules.StartablesModule;
 import org.apache.james.utils.InitializationOperation;
 import org.apache.james.utils.InitilizationOperationBuilder;
 
+import com.codahale.metrics.MetricRegistry;
 import com.google.inject.AbstractModule;
+import com.google.inject.Provides;
 import com.google.inject.Scopes;
+import com.google.inject.Singleton;
 import com.google.inject.TypeLiteral;
 import com.google.inject.multibindings.Multibinder;
 import com.google.inject.multibindings.ProvidesIntoSet;
@@ -46,8 +53,20 @@ public class WebAdminProxyModule extends AbstractModule {
         bind(OidcTokenResolver.class).in(Scopes.SINGLETON);
         bind(OidcTokenCache.class).to(CaffeineOidcTokenCache.class).in(Scopes.SINGLETON);
         bind(WebAdminProxy.class).in(Scopes.SINGLETON);
+        bind(IsStartedProbe.class).in(Scopes.SINGLETON);
 
-        configuration.selfAdminPort().ifPresent(port -> install(new SelfAdminModule(port)));
+        if (configuration.selfAdminEnabled()) {
+            bind(MetricFactory.class).to(DropWizardMetricFactory.class);
+            configuration.selfAdminPort().ifPresent(port -> install(new SelfAdminModule(port)));
+        } else {
+            bind(MetricFactory.class).to(DefaultMetricFactory.class).in(Scopes.SINGLETON);
+        }
+    }
+
+    @Provides
+    @Singleton
+    public MetricRegistry provideMetricRegistry() {
+        return new MetricRegistry();
     }
 
     @ProvidesIntoSet
@@ -56,4 +75,5 @@ public class WebAdminProxyModule extends AbstractModule {
             .forClass(WebAdminProxy.class)
             .init(instance::start);
     }
+
 }
