@@ -41,6 +41,47 @@ public record WebAdminProxyConfiguration(int port,
                                           Optional<Integer> selfAdminPort,
                                           boolean selfAdminEnabled) {
 
+    public static Builder builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        private int port = 0;
+        private OidcConfiguration oidcConfiguration;
+        private Map<String, ClientConfiguration> clients = new HashMap<>();
+        private Optional<Integer> selfAdminPort = Optional.empty();
+        private boolean selfAdminEnabled = false;
+
+        public Builder port(int port) {
+            this.port = port;
+            return this;
+        }
+
+        public Builder oidcConfiguration(OidcConfiguration oidcConfiguration) {
+            this.oidcConfiguration = oidcConfiguration;
+            return this;
+        }
+
+        public Builder clients(Map<String, ClientConfiguration> clients) {
+            this.clients = clients;
+            return this;
+        }
+
+        public Builder selfAdminPort(int port) {
+            this.selfAdminPort = Optional.of(port);
+            return this;
+        }
+
+        public Builder selfAdminEnabled() {
+            this.selfAdminEnabled = true;
+            return this;
+        }
+
+        public WebAdminProxyConfiguration build() {
+            return new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled);
+        }
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxyConfiguration.class);
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\{ENV:([^}]+)\\}");
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -113,15 +154,24 @@ public record WebAdminProxyConfiguration(int port,
                 authorizedUsers));
         }
 
-        Optional<Integer> selfAdminPort = Optional.ofNullable(root.get("self.webadmin.port"))
-            .map(node -> Integer.parseInt(resolve(node.asText())));
         boolean selfAdminEnabled = Optional.ofNullable(root.get("self.webadmin.enabled"))
             .map(node -> Boolean.parseBoolean(resolve(node.asText())))
             .orElse(false);
 
-        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled);
+        Builder builder = builder()
+            .port(port)
+            .oidcConfiguration(oidcConfiguration)
+            .clients(clients);
+        Optional.ofNullable(root.get("self.webadmin.port"))
+            .map(node -> Integer.parseInt(resolve(node.asText())))
+            .ifPresent(builder::selfAdminPort);
+        if (selfAdminEnabled) {
+            builder.selfAdminEnabled();
+        }
+
+        WebAdminProxyConfiguration config = builder.build();
         LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audience={}, userClaim={}, clients={}",
-            port, selfAdminEnabled, selfAdminPort.map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
+            port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
         return config;
     }
 
