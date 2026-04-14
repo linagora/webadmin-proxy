@@ -578,9 +578,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET").withPath("/domains"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains").statusCode()).isEqualTo(200);
+                .when().get("/domains")
+                .then().statusCode(200);
         }
 
         @Test
@@ -588,9 +589,10 @@ class WebAdminProxyIntegrationTest {
             startProxyWith(List.of(new AllowedUrl(List.of(), "/domains")));
             stubValidToken();
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users").statusCode()).isEqualTo(403);
+                .when().get("/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -600,12 +602,14 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET").withPath("/domains"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains").statusCode()).isEqualTo(200);
-            assertThat(given().port(proxyServer.getPort())
+                .when().get("/domains")
+                .then().statusCode(200);
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().delete("/domains").statusCode()).isEqualTo(403);
+                .when().delete("/domains")
+                .then().statusCode(403);
         }
 
         @Test
@@ -615,9 +619,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("DELETE").withPath("/domains"))
                 .respond(response().withStatusCode(204));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().delete("/domains").statusCode()).isEqualTo(204);
+                .when().delete("/domains")
+                .then().statusCode(204);
         }
 
         @Test
@@ -627,9 +632,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET").withPath("/domains/example.com/aliases"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/aliases").statusCode()).isEqualTo(200);
+                .when().get("/domains/example.com/aliases")
+                .then().statusCode(200);
         }
 
         @Test
@@ -637,9 +643,10 @@ class WebAdminProxyIntegrationTest {
             startProxyWith(List.of(new AllowedUrl(List.of(), "/domains/{domain}/aliases")));
             stubValidToken();
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/other/aliases").statusCode()).isEqualTo(403);
+                .when().get("/domains/example.com/other/aliases")
+                .then().statusCode(403);
         }
 
         @Test
@@ -649,9 +656,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/aliases/bob@example.com").statusCode()).isEqualTo(200);
+                .when().get("/domains/example.com/aliases/bob@example.com")
+                .then().statusCode(200);
         }
 
         @Test
@@ -662,15 +670,18 @@ class WebAdminProxyIntegrationTest {
             stubValidToken();
             backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains").statusCode()).isEqualTo(200);
-            assertThat(given().port(proxyServer.getPort())
+                .when().get("/domains")
+                .then().statusCode(200);
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().delete("/users/bob@example.com").statusCode()).isEqualTo(200);
-            assertThat(given().port(proxyServer.getPort())
+                .when().delete("/users/bob@example.com")
+                .then().statusCode(200);
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().post("/domains").statusCode()).isEqualTo(403);
+                .when().post("/domains")
+                .then().statusCode(403);
         }
 
         @Test
@@ -680,9 +691,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET").withPath("/anything"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/anything").statusCode()).isEqualTo(200);
+                .when().get("/anything")
+                .then().statusCode(200);
         }
     }
 
@@ -748,9 +760,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(200);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(200);
         }
 
         @Test
@@ -761,9 +774,10 @@ class WebAdminProxyIntegrationTest {
             stubIntrospect();
             stubUserinfo("{\"email\":\"" + USER_EMAIL + "\",\"domain\":\"other.com\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(403);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -776,9 +790,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(200);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(200);
         }
 
         @Test
@@ -789,9 +804,10 @@ class WebAdminProxyIntegrationTest {
             stubIntrospect();
             stubUserinfo("{\"email\":\"bob@other.com\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(403);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -802,9 +818,10 @@ class WebAdminProxyIntegrationTest {
             stubIntrospect();
             stubUserinfo("{\"email\":\"" + USER_EMAIL + "\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(403);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -815,9 +832,10 @@ class WebAdminProxyIntegrationTest {
             stubIntrospect();
             stubUserinfo("{\"email\":\"not-an-email\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/users").statusCode()).isEqualTo(403);
+                .when().get("/domains/example.com/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -830,9 +848,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("{}"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/quota/count").statusCode()).isEqualTo(200);
+                .when().get("/quota/count")
+                .then().statusCode(200);
         }
 
         @Test
@@ -845,17 +864,20 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users?domain=example.com").statusCode()).isEqualTo(200);
+                .when().get("/users?domain=example.com")
+                .then().statusCode(200);
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users?domain=other.com").statusCode()).isEqualTo(403);
+                .when().get("/users?domain=other.com")
+                .then().statusCode(403);
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users").statusCode()).isEqualTo(403);
+                .when().get("/users")
+                .then().statusCode(403);
         }
 
         @Test
@@ -868,12 +890,14 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/example.com/aliases/bob@example.com").statusCode()).isEqualTo(200);
-            assertThat(given().port(proxyServer.getPort())
+                .when().get("/domains/example.com/aliases/bob@example.com")
+                .then().statusCode(200);
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/other.com/aliases/bob@example.com").statusCode()).isEqualTo(403);
+                .when().get("/domains/other.com/aliases/bob@example.com")
+                .then().statusCode(403);
         }
     }
 
@@ -939,9 +963,10 @@ class WebAdminProxyIntegrationTest {
             backendMock.when(request().withMethod("GET"))
                 .respond(response().withStatusCode(200).withBody("[]"));
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/bob@example.com/mailboxes").statusCode()).isEqualTo(200);
+                .when().get("/users/bob@example.com/mailboxes")
+                .then().statusCode(200);
         }
 
         @Test
@@ -952,9 +977,10 @@ class WebAdminProxyIntegrationTest {
             stubIntrospect();
             stubUserinfo("{\"email\":\"alice@example.com\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/bob@other.com/mailboxes").statusCode()).isEqualTo(403);
+                .when().get("/users/bob@other.com/mailboxes")
+                .then().statusCode(403);
         }
 
         @Test
@@ -966,9 +992,10 @@ class WebAdminProxyIntegrationTest {
             stubUserinfo("{\"email\":\"alice@example.com\"}");
 
             // URL pattern requires email format: "bob" (no @) should not match %@{domain}
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/bob/mailboxes").statusCode()).isEqualTo(403);
+                .when().get("/users/bob/mailboxes")
+                .then().statusCode(403);
         }
 
         @Test
@@ -983,12 +1010,14 @@ class WebAdminProxyIntegrationTest {
                 .respond(response().withStatusCode(200).withBody("[]"));
 
             // Different local parts, same domain — all should be allowed
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/alice@example.com/mailboxes").statusCode()).isEqualTo(200);
-            assertThat(given().port(proxyServer.getPort())
+                .when().get("/users/alice@example.com/mailboxes")
+                .then().statusCode(200);
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/charlie.d@example.com/quota").statusCode()).isEqualTo(200);
+                .when().get("/users/charlie.d@example.com/quota")
+                .then().statusCode(200);
         }
 
         @Test
@@ -1001,9 +1030,10 @@ class WebAdminProxyIntegrationTest {
             // email present (auth succeeds), but domain_claim is absent (restriction fails → 403)
             stubUserinfo("{\"email\":\"alice@example.com\"}");
 
-            assertThat(given().port(proxyServer.getPort())
+            given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/users/bob@example.com/mailboxes").statusCode()).isEqualTo(403);
+                .when().get("/users/bob@example.com/mailboxes")
+                .then().statusCode(403);
         }
     }
 
