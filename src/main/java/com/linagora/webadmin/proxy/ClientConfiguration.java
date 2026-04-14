@@ -18,5 +18,6 @@ import java.util.Map;
 
 public record ClientConfiguration(String webadminBackend, String webadminToken,
                                    Map<String, String> expectedClaims, List<AllowedUrl> allowedUrls,
-                                   Map<String, UrlPatternRestriction> urlPatternRestrictions) {
+                                   Map<String, UrlPatternRestriction> urlPatternRestrictions,
+                                   List<String> authorizedUsers) {
 }

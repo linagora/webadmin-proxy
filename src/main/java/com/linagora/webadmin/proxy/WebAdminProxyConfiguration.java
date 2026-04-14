@@ -98,12 +98,18 @@ public record WebAdminProxyConfiguration(int port,
                     urlPatternRestrictions.put(varName, new UrlPatternRestriction(backingClaim, operator));
                 });
             }
+            List<String> authorizedUsers = new ArrayList<>();
+            JsonNode authorizedUsersNode = clientNode.get("authorized.users");
+            if (authorizedUsersNode != null) {
+                authorizedUsersNode.forEach(u -> authorizedUsers.add(resolve(u.asText())));
+            }
             clients.put(entry.getKey(), new ClientConfiguration(
                 resolve(clientNode.get("webadmin.backend").asText()),
                 resolve(clientNode.get("webadmin.token").asText()),
                 expectedClaims,
                 allowedUrls,
-                urlPatternRestrictions));
+                urlPatternRestrictions,
+                authorizedUsers));
         }
 
         Optional<Integer> selfAdminPort = Optional.ofNullable(root.get("self.webadmin.port"))

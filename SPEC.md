@@ -329,6 +329,49 @@ The `%` token captures no named variable — it is a pure consumer of the local 
 
 Definition of done: Write IT tests.
 
+### Step 5.75: Authorized users
+
+On some environment it is hard to configure OIDC servers and we can rely on a small static list of authorized users. Defualts to none if ommited which translates to no specific restrictions.
+
+Syntax:
+
+```json
+{
+  "port": "8001",
+  "oidc.userInfo.url": "http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/token/userinfo",
+  "oidc.introspect.url": "http://keycloak:8080/auth/realms/oidc/protocol/openid-connect/token/introspect",
+  "oidc.introspect.credentials": "Bearer ewjiwelhwew",
+  "oidc.audience": "webadmin-proxy",
+  "oidc.claim.authenticated.user": "email",
+  "oidc.token.cache.expiration": "360s",
+  "clients": {
+    "clientIdA": {
+      "webadmin.backend": "http://127.0.0.1:8000",
+      "webadmin.token": "mastertokenvalue",
+      "expected.claims": {
+        "admin": "1"
+      }
+    },
+    "clientIdB": {
+      "webadmin.backend": "http://127.0.0.1:8001",
+      "webadmin.token": "readonlytoken",
+      "url.patterns.restrictions": {
+        "domain": {
+          "backing.claim": "domain",
+          "operator": "EQUALS"
+        }
+      },
+      "authorized.users":["btellier@linagora.com","xguimard@linagora.com"],
+      "allowed.urls": [
+        {"verb": ["GET"], "endpoint": "/domains/{domain}/users"},
+        {"endpoint": "/domains/{domain}/aliases/*"}
+      ]
+    }
+  }
+}
+```
+
+
 ### Step 6: Expose backchannel logout
 
 The proxy exposes its own admin API (distinct from the proxied James webadmin). For now it exposes a single endpoint: backchannel logout, allowing the OIDC provider to invalidate cached tokens upon session termination.

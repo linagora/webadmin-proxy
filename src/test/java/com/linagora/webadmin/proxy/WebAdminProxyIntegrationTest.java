@@ -77,7 +77,7 @@ class WebAdminProxyIntegrationTest {
             userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
 
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of()));
+            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of()));
 
         return new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
     }
@@ -556,7 +556,7 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of()));
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), List.of()));
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -734,7 +734,7 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions));
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions, List.of()));
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -937,7 +937,7 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
                 CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions));
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions, List.of()));
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1074,7 +1074,8 @@ class WebAdminProxyIntegrationTest {
                     WEBADMIN_TOKEN,
                     Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE),
                     List.of(),
-                    Map.of()));
+                    Map.of(),
+                    List.of()));
 
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
@@ -1187,6 +1188,225 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    class AuthorizedUsers {
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void startProxyWith(List<String> authorizedUsers) throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), authorizedUsers));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        private void stubValidToken() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        }
+
+        @Test
+        void shouldAllowRequestWhenUserIsInAuthorizedList() throws Exception {
+            startProxyWith(List.of(USER_EMAIL, "other@example.com"));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenUserIsNotInAuthorizedList() throws Exception {
+            startProxyWith(List.of("other@example.com", "another@example.com"));
+            stubValidToken();
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowAllUsersWhenAuthorizedListIsEmpty() throws Exception {
+            startProxyWith(List.of());
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+        }
+
+        private void startProxyWith(List<String> authorizedUsers, Map<String, String> expectedClaims) throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, expectedClaims, List.of(), Map.of(), authorizedUsers));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        @Test
+        void shouldAllowWhenUserIsInListAndHasRequiredClaim() throws Exception {
+            startProxyWith(List.of(USER_EMAIL), Map.of("admin", "1"));
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"1\"}"));
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenUserIsInListButRequiredClaimIsMissing() throws Exception {
+            startProxyWith(List.of(USER_EMAIL), Map.of("admin", "1"));
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenUserHasRequiredClaimButIsNotInList() throws Exception {
+            startProxyWith(List.of("other@example.com"), Map.of("admin", "1"));
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"1\"}"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+
+        private void startProxyWith(List<String> authorizedUsers, List<AllowedUrl> allowedUrls) throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), authorizedUsers));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.empty());
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        @Test
+        void shouldAllowWhenUserIsInListAndUrlIsAllowed() throws Exception {
+            startProxyWith(List.of(USER_EMAIL), List.of(new AllowedUrl(List.of("GET"), "/domains")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenUserIsInListButUrlIsNotAllowed() throws Exception {
+            startProxyWith(List.of(USER_EMAIL), List.of(new AllowedUrl(List.of("GET"), "/domains")));
+            stubValidToken();
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().delete("/domains")
+            .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenUserIsNotInListEvenIfUrlWouldBeAllowed() throws Exception {
+            startProxyWith(List.of("other@example.com"), List.of(new AllowedUrl(List.of("GET"), "/domains")));
+            stubValidToken();
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+    }
+
+    @Nested
     class BackchannelLogout {
 
         static final String SESSION_ID = "session-abc-123";
@@ -1212,7 +1432,7 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of()));
+                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of()));
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients, Optional.of(0));
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
