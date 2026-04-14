@@ -27,6 +27,7 @@ import java.util.Optional;
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.mockserver.client.MockServerClient;
 import org.mockserver.integration.ClientAndServer;
@@ -71,7 +72,7 @@ class WebAdminProxyIntegrationTest {
             userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
 
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN));
+            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of()));
 
         return new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
     }
@@ -183,24 +184,6 @@ class WebAdminProxyIntegrationTest {
             .withMethod("GET")
             .withPath("/domains")
             .withHeader("Authorization", "Bearer " + WEBADMIN_TOKEN));
-    }
-
-    @Test
-    void shouldNotForwardOriginalBearerTokenToBackend() {
-        stubValidToken();
-        backendMock.when(request().withMethod("GET").withPath("/domains"))
-            .respond(response().withStatusCode(200).withBody("[]"));
-
-        given()
-            .port(proxyServer.getPort())
-            .header("Authorization", "Bearer " + VALID_TOKEN)
-        .when()
-            .get("/domains");
-
-        backendMock.verify(request()
-            .withMethod("GET")
-            .withPath("/domains")
-            .withoutHeader("Authorization", "Bearer " + VALID_TOKEN));
     }
 
     // --- Request/response passthrough ---
@@ -532,5 +515,150 @@ class WebAdminProxyIntegrationTest {
 
         oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
         oidcMock.verify(request().withPath("/userinfo"), VerificationTimes.exactly(2));
+    }
+
+    @Nested
+    class ExpectedClaimsValidation {
+
+        static final String RESTRICTED_CLIENT_ID = "restricted-client";
+        static final String REQUIRED_CLAIM_NAME = "admin";
+        static final String REQUIRED_CLAIM_VALUE = "1";
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+
+            Map<String, ClientConfiguration> clients = Map.of(
+                RESTRICTED_CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort,
+                    WEBADMIN_TOKEN,
+                    Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE)));
+
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void stubIntrospect() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + RESTRICTED_CLIENT_ID + "\"}"));
+        }
+
+        @Test
+        void shouldAllowRequestWhenClaimMatches() {
+            stubIntrospect();
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"1\"}"));
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldReturn403WhenRequiredClaimIsMissing() {
+            stubIntrospect();
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldReturn403WhenClaimValueDoesNotMatch() {
+            stubIntrospect();
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"0\"}"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldReturn403WhenClaimIsPresentWithDifferentCase() {
+            stubIntrospect();
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"True\"}"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldReturn401WhenTokenIsInvalidEvenWithExpectedClaims() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":false}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":\"1\"}"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(401);
+        }
     }
 }

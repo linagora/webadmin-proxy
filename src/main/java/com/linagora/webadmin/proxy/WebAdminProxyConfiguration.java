@@ -65,9 +65,16 @@ public record WebAdminProxyConfiguration(int port,
         while (clientEntries.hasNext()) {
             Map.Entry<String, JsonNode> entry = clientEntries.next();
             JsonNode clientNode = entry.getValue();
+            Map<String, String> expectedClaims = new HashMap<>();
+            JsonNode claimsNode = clientNode.get("expected.claims");
+            if (claimsNode != null) {
+                claimsNode.fields().forEachRemaining(claim ->
+                    expectedClaims.put(claim.getKey(), resolve(claim.getValue().asText())));
+            }
             clients.put(entry.getKey(), new ClientConfiguration(
                 resolve(clientNode.get("webadmin.backend").asText()),
-                resolve(clientNode.get("webadmin.token").asText())));
+                resolve(clientNode.get("webadmin.token").asText()),
+                expectedClaims));
         }
 
         WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients);

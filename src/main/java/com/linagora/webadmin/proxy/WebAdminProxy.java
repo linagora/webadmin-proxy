@@ -86,6 +86,10 @@ public class WebAdminProxy {
             .switchIfEmpty(Mono.just(new byte[0]))
             .flatMap(payload -> tokenCache.resolve(token)
                 .flatMap(auth -> dispatchToBackend(request, response, payload, auth))
+                .onErrorResume(AccessForbiddenException.class, e -> {
+                    LOGGER.info("Access forbidden", e);
+                    return response.status(403).send().then();
+                })
                 .onErrorResume(OidcAuthenticationException.class, e -> {
                     LOGGER.info("Authentication rejected", e);
                     return response.status(401).send().then();

@@ -50,7 +50,7 @@ public class OidcTokenResolver {
                 Mono.from(checkTokenClient.userInfo(oidcConfiguration.userInfoUrl(), token)),
                 Mono.from(checkTokenClient.introspect(oidcConfiguration.introspectionEndpoint(), token)))
             .flatMap(tuple -> buildAuthenticatedRequest(tuple.getT1(), tuple.getT2()))
-            .onErrorMap(e -> !(e instanceof OidcAuthenticationException),
+            .onErrorMap(e -> !(e instanceof OidcAuthenticationException) && !(e instanceof AccessForbiddenException),
                 e -> new OidcAuthenticationException("OIDC endpoint error", e));
     }
 
@@ -76,7 +76,21 @@ public class OidcTokenResolver {
         ClientConfiguration clientConfiguration = Optional.ofNullable(clients.get(clientId))
             .orElseThrow(() -> new OidcAuthenticationException("Unknown client_id: " + clientId));
 
+        validateExpectedClaims(clientConfiguration, userInfo);
+
         return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration));
+    }
+
+    private void validateExpectedClaims(ClientConfiguration clientConfiguration, UserinfoResponse userInfo) {
+        clientConfiguration.expectedClaims().forEach((claimName, expectedValue) -> {
+            String actualValue = userInfo.claimByPropertyName(claimName)
+                .orElseThrow(() -> new AccessForbiddenException(
+                    "Missing required claim '" + claimName + "' in userinfo response"));
+            if (!expectedValue.equals(actualValue)) {
+                throw new AccessForbiddenException(
+                    "Claim '" + claimName + "' value does not match: expected '" + expectedValue + "'");
+            }
+        });
     }
 
     private boolean audienceMatches(TokenIntrospectionResponse introspect) {

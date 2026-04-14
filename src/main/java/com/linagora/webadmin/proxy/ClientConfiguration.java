@@ -13,5 +13,7 @@
 
 package com.linagora.webadmin.proxy;
 
-public record ClientConfiguration(String webadminBackend, String webadminToken) {
+import java.util.Map;
+
+public record ClientConfiguration(String webadminBackend, String webadminToken, Map<String, String> expectedClaims) {
 }
