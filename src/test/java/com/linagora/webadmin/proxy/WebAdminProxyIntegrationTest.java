@@ -878,6 +878,136 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    class EmailLocalPartWildcard {
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void startProxyWith(Map<String, UrlPatternRestriction> restrictions, List<AllowedUrl> allowedUrls) throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        private void stubIntrospect() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        }
+
+        private void stubUserinfo(String body) {
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON).withBody(body));
+        }
+
+        @Test
+        void shouldAllowUserEndpointWhenEmailDomainMatches() throws Exception {
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("email", Operator.HAS_DOMAIN)),
+                List.of(new AllowedUrl(List.of(), "/users/%@{domain}/*")));
+            stubIntrospect();
+            stubUserinfo("{\"email\":\"alice@example.com\"}");
+            backendMock.when(request().withMethod("GET"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/bob@example.com/mailboxes").statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldReturn403WhenEmailDomainDoesNotMatchTargetUser() throws Exception {
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("email", Operator.HAS_DOMAIN)),
+                List.of(new AllowedUrl(List.of(), "/users/%@{domain}/*")));
+            stubIntrospect();
+            stubUserinfo("{\"email\":\"alice@example.com\"}");
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/bob@other.com/mailboxes").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldReturn403WhenUrlHasNoAtSignInUserSegment() throws Exception {
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("email", Operator.HAS_DOMAIN)),
+                List.of(new AllowedUrl(List.of(), "/users/%@{domain}/*")));
+            stubIntrospect();
+            stubUserinfo("{\"email\":\"alice@example.com\"}");
+
+            // URL pattern requires email format: "bob" (no @) should not match %@{domain}
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/bob/mailboxes").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void localPartShouldNotBeExposedAsCapturedVariable() throws Exception {
+            // % is anonymous: only {domain} should be captured and validated
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("email", Operator.HAS_DOMAIN)),
+                List.of(new AllowedUrl(List.of(), "/users/%@{domain}/*")));
+            stubIntrospect();
+            stubUserinfo("{\"email\":\"alice@example.com\"}");
+            backendMock.when(request().withMethod("GET"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // Different local parts, same domain — all should be allowed
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/alice@example.com/mailboxes").statusCode()).isEqualTo(200);
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/charlie.d@example.com/quota").statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldReturn403WhenBackingClaimMissingForPercentPattern() throws Exception {
+            // Use a separate backing claim (not the auth claim) so auth passes but restriction fails
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("domain_claim", Operator.EQUALS)),
+                List.of(new AllowedUrl(List.of(), "/users/%@{domain}/*")));
+            stubIntrospect();
+            // email present (auth succeeds), but domain_claim is absent (restriction fails → 403)
+            stubUserinfo("{\"email\":\"alice@example.com\"}");
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users/bob@example.com/mailboxes").statusCode()).isEqualTo(403);
+        }
+    }
+
+    @Nested
     class ExpectedClaimsValidation {
 
         static final String RESTRICTED_CLIENT_ID = "restricted-client";

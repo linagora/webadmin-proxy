@@ -375,6 +375,65 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class EmailLocalPartWildcard {
+
+        @Test
+        void percentShouldMatchLocalPartOfEmail() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            assertThat(rule.matches("GET", "/users/bob@example.com/mailboxes")).isTrue();
+        }
+
+        @Test
+        void percentShouldNotMatchAcrossAtSign() {
+            // % only matches [^@/]+, so a bare segment without @ should not match
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            assertThat(rule.matches("GET", "/users/bob/mailboxes")).isFalse();
+        }
+
+        @Test
+        void percentShouldNotMatchAcrossSlash() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            assertThat(rule.matches("GET", "/users/bob/extra@example.com/mailboxes")).isFalse();
+        }
+
+        @Test
+        void percentShouldNotCaptureLocalPartVariable() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            Optional<Map<String, String>> result = rule.match("GET", "/users/bob@example.com/mailboxes");
+            assertThat(result).isPresent();
+            // only 'domain' should be captured, not the local part
+            assertThat(result.get()).containsOnlyKeys("domain");
+            assertThat(result.get()).containsEntry("domain", "example.com");
+        }
+
+        @Test
+        void percentShouldMatchAnyLocalPart() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            assertThat(rule.matches("GET", "/users/alice@example.com/quota")).isTrue();
+            assertThat(rule.matches("GET", "/users/charlie.d@example.com/mailboxes/INBOX")).isTrue();
+        }
+
+        @Test
+        void percentAtDomainShouldCaptureDomainForRestriction() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            Optional<Map<String, String>> alice = rule.match("GET", "/users/alice@example.com/quota");
+            assertThat(alice).isPresent();
+            assertThat(alice.get()).containsEntry("domain", "example.com");
+
+            Optional<Map<String, String>> bob = rule.match("GET", "/users/bob@other.com/mailboxes");
+            assertThat(bob).isPresent();
+            assertThat(bob.get()).containsEntry("domain", "other.com");
+        }
+
+        @Test
+        void percentPatternShouldNotMatchMissingLocalPart() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/*");
+            // "@example.com" has no local part: % requires at least one char
+            assertThat(rule.matches("GET", "/users/@example.com/mailboxes")).isFalse();
+        }
+    }
+
+    @Nested
     class OperatorTests {
 
         @Test

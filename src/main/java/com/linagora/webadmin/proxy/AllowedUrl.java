@@ -63,9 +63,10 @@ public class AllowedUrl {
         }
 
         int queryIdx = fullUri.indexOf('?');
-        String path = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
+        String rawPath = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
         String queryString = queryIdx >= 0 ? fullUri.substring(queryIdx + 1) : "";
 
+        String path = URLDecoder.decode(rawPath, StandardCharsets.UTF_8);
         Matcher m = compiledPathPattern.matcher(path);
         if (!m.matches()) {
             return Optional.empty();
@@ -151,12 +152,15 @@ public class AllowedUrl {
                     sb.append(Pattern.quote(String.valueOf(c)));
                     i++;
                 }
+            } else if (c == '%') {
+                sb.append("[^@/]+");
+                i++;
             } else if (c == '*') {
                 sb.append(".*");
                 i++;
             } else {
                 int next = i;
-                while (next < pattern.length() && pattern.charAt(next) != '{' && pattern.charAt(next) != '*') {
+                while (next < pattern.length() && pattern.charAt(next) != '{' && pattern.charAt(next) != '*' && pattern.charAt(next) != '%') {
                     next++;
                 }
                 sb.append(Pattern.quote(pattern.substring(i, next)));

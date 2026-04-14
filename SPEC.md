@@ -231,7 +231,19 @@ Note: `oidc.introspect.credentials` is optional.
 
 If no allowed.url is specified then all are allowed!
 
-Support wildcards for all child, this eases the configuration! Also if verbs is ommitted, then all verbs are supported.
+#### Endpoint pattern syntax
+
+| Token | Meaning |
+|-------|---------|
+| `{varname}` | Captures exactly one path segment (no `/`) |
+| `%` | Captures the local part of an email address (no `@`, no `/`) |
+| `*` | Matches any remaining characters, including `/` |
+| `?param={varname}` | Captures a query parameter value into a named variable |
+| `?param=value` | Requires query parameter to equal a literal value |
+
+`{varname}` and `%@{varname}` captured values are available to `url.patterns.restrictions`. Query parameters require their full name to be present in the request; extra query parameters are ignored.
+
+If `verb` is omitted from a rule, all HTTP verbs are allowed.
 
 Definition of done: Write IT tests.
 
@@ -284,6 +296,36 @@ Supported url.patterns.restrictions operator:
  - HAS_DOMAIN: parses the domain of the mail address. To be used with claim `email`
 
 If the claim referenced by `backing.claim` is absent from the token, the request MUST be rejected with 403. A missing claim must never silently pass as unrestricted access.
+
+Definition of done: Write IT tests.
+
+### Step 5.5: Email local-part wildcard for user endpoints
+
+James user endpoints address users by their full email address (e.g. `GET /users/bob@example.com/mailboxes`). The `%` wildcard in endpoint patterns matches the local part of an email (any characters except `@` and `/`), so that `%@{domain}` binds the domain segment for use in `url.patterns.restrictions`.
+
+This enables per-domain scoping of user endpoints without enumerating every possible username.
+
+Example: a client that may only manage users belonging to its own domain:
+
+```json
+"clientIdB": {
+  "webadmin.backend": "http://127.0.0.1:8001",
+  "webadmin.token": "readonlytoken",
+  "url.patterns.restrictions": {
+    "domain": {
+      "backing.claim": "email",
+      "operator": "HAS_DOMAIN"
+    }
+  },
+  "allowed.urls": [
+    {"endpoint": "/users/%@{domain}/*"}
+  ]
+}
+```
+
+An admin whose `email` claim is `alice@example.com` can reach `/users/bob@example.com/mailboxes` (domain matches) but NOT `/users/bob@other.com/mailboxes` (domain mismatch → 403).
+
+The `%` token captures no named variable — it is a pure consumer of the local part. Only `{domain}` is captured and passed to `url.patterns.restrictions`.
 
 Definition of done: Write IT tests.
 
