@@ -86,6 +86,10 @@ public class AllowedUrl {
             }
             if (paramPattern.startsWith("{") && paramPattern.endsWith("}")) {
                 String varName = paramPattern.substring(1, paramPattern.length() - 1);
+                String existing = captured.get(varName);
+                if (existing != null && !existing.equals(requestValue)) {
+                    return Optional.empty();
+                }
                 captured.put(varName, requestValue);
             } else if (!paramPattern.equals(requestValue)) {
                 return Optional.empty();

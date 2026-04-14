@@ -218,6 +218,120 @@ class AllowedUrlTest {
             AllowedUrl rule = new AllowedUrl(List.of(), "/users");
             assertThat(rule.matches("GET", "/users?limit=10")).isTrue();
         }
+
+        @Test
+        void shouldMatchWhenMultipleRequiredParamsPresentInSameOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users?domain=example.com&active=true")).isTrue();
+        }
+
+        @Test
+        void shouldMatchWhenMultipleRequiredParamsPresentInReverseOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users?active=true&domain=example.com")).isTrue();
+        }
+
+        @Test
+        void shouldNotMatchWhenOneOfMultipleRequiredParamsIsMissing() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users?domain=example.com")).isFalse();
+        }
+
+        @Test
+        void shouldNotMatchWhenAllRequiredParamsMissing() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users")).isFalse();
+        }
+
+        @Test
+        void shouldMatchWithExtraParamsAlongsideMultipleRequiredParams() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users?limit=10&domain=example.com&active=true")).isTrue();
+        }
+
+        @Test
+        void shouldCaptureMultipleQueryParamVariables() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&page={page}");
+            Optional<Map<String, String>> result = rule.match("GET", "/users?domain=example.com&page=2");
+            assertThat(result).isPresent();
+            assertThat(result.get())
+                .containsEntry("domain", "example.com")
+                .containsEntry("page", "2");
+        }
+
+        @Test
+        void shouldCaptureMultipleQueryParamVariablesInReverseOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&page={page}");
+            Optional<Map<String, String>> result = rule.match("GET", "/users?page=2&domain=example.com");
+            assertThat(result).isPresent();
+            assertThat(result.get())
+                .containsEntry("domain", "example.com")
+                .containsEntry("page", "2");
+        }
+
+        @Test
+        void shouldMatchMixOfCapturedAndLiteralParams() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            Optional<Map<String, String>> result = rule.match("GET", "/users?active=true&domain=example.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "example.com");
+        }
+
+        @Test
+        void shouldNotMatchWhenLiteralParamValueWrongAmongMultiple() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users?domain={domain}&active=true");
+            assertThat(rule.matches("GET", "/users?domain=example.com&active=false")).isFalse();
+        }
+
+        // --- Same variable in path AND query ---
+
+        @Test
+        void sameVariableInPathAndQueryBothConsistentShouldMatch() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users?domain={domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/domains/example.com/users?domain=example.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "example.com");
+        }
+
+        @Test
+        void sameVariableInPathAndQueryWithDifferentValuesShouldNotMatch() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users?domain={domain}");
+            assertThat(rule.matches("GET", "/domains/example.com/users?domain=other.com")).isFalse();
+        }
+    }
+
+    @Nested
+    class MultiVariableRestrictions {
+
+        @Test
+        void twoDistinctVariablesInPathBothMatchingRestrictions() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domainA}/aliases/{domainB}");
+            Optional<Map<String, String>> result = rule.match("GET", "/domains/example.com/aliases/other.com");
+            assertThat(result).isPresent();
+            assertThat(result.get())
+                .containsEntry("domainA", "example.com")
+                .containsEntry("domainB", "other.com");
+        }
+
+        @Test
+        void pathVariableAndQueryVariableBothCaptured() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users?tenant={tenant}");
+            Optional<Map<String, String>> result = rule.match("GET", "/domains/example.com/users?tenant=acme.com");
+            assertThat(result).isPresent();
+            assertThat(result.get())
+                .containsEntry("domain", "example.com")
+                .containsEntry("tenant", "acme.com");
+        }
+
+        @Test
+        void pathVariableAndQueryVariableBothCapturedReverseQueryOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users?tenant={tenant}&active=true");
+            Optional<Map<String, String>> result = rule.match("GET", "/domains/example.com/users?active=true&tenant=acme.com");
+            assertThat(result).isPresent();
+            assertThat(result.get())
+                .containsEntry("domain", "example.com")
+                .containsEntry("tenant", "acme.com");
+        }
     }
 
     @Nested
