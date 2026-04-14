@@ -85,11 +85,24 @@ public record WebAdminProxyConfiguration(int port,
                     allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText()));
                 }
             }
+            Map<String, UrlPatternRestriction> urlPatternRestrictions = new HashMap<>();
+            JsonNode restrictionsNode = clientNode.get("url.patterns.restrictions");
+            if (restrictionsNode != null) {
+                restrictionsNode.fields().forEachRemaining(r -> {
+                    String varName = r.getKey();
+                    JsonNode restrictionNode = r.getValue();
+                    String backingClaim = restrictionNode.get("backing.claim").asText();
+                    UrlPatternRestriction.Operator operator = UrlPatternRestriction.Operator.valueOf(
+                        restrictionNode.get("operator").asText());
+                    urlPatternRestrictions.put(varName, new UrlPatternRestriction(backingClaim, operator));
+                });
+            }
             clients.put(entry.getKey(), new ClientConfiguration(
                 resolve(clientNode.get("webadmin.backend").asText()),
                 resolve(clientNode.get("webadmin.token").asText()),
                 expectedClaims,
-                allowedUrls));
+                allowedUrls,
+                urlPatternRestrictions));
         }
 
         WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients);

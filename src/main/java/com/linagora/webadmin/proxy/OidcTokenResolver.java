@@ -78,7 +78,7 @@ public class OidcTokenResolver {
 
         validateExpectedClaims(clientConfiguration, userInfo);
 
-        return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration));
+        return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo));
     }
 
     private void validateExpectedClaims(ClientConfiguration clientConfiguration, UserinfoResponse userInfo) {

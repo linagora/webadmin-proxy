@@ -13,10 +13,9 @@
 
 package com.linagora.webadmin.proxy;
 
-import java.util.List;
-import java.util.Map;
+public class AccessForbiddenException extends RuntimeException {
 
-public record ClientConfiguration(String webadminBackend, String webadminToken,
-                                   Map<String, String> expectedClaims, List<AllowedUrl> allowedUrls,
-                                   Map<String, UrlPatternRestriction> urlPatternRestrictions) {
+    public AccessForbiddenException(String message) {
+        super(message);
+    }
 }

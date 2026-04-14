@@ -13,10 +13,27 @@
 
 package com.linagora.webadmin.proxy;
 
-import java.util.List;
-import java.util.Map;
+public record UrlPatternRestriction(String backingClaim, Operator operator) {
 
-public record ClientConfiguration(String webadminBackend, String webadminToken,
-                                   Map<String, String> expectedClaims, List<AllowedUrl> allowedUrls,
-                                   Map<String, UrlPatternRestriction> urlPatternRestrictions) {
+    public enum Operator {
+        EQUALS {
+            @Override
+            public String extractExpectedValue(String claimValue) {
+                return claimValue;
+            }
+        },
+        HAS_DOMAIN {
+            @Override
+            public String extractExpectedValue(String claimValue) {
+                int atIndex = claimValue.indexOf('@');
+                if (atIndex < 0) {
+                    throw new AccessForbiddenException(
+                        "Claim value is not a valid email address for HAS_DOMAIN operator");
+                }
+                return claimValue.substring(atIndex + 1);
+            }
+        };
+
+        public abstract String extractExpectedValue(String claimValue);
+    }
 }

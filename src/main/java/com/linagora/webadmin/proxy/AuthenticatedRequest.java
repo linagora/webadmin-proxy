@@ -13,5 +13,8 @@
 
 package com.linagora.webadmin.proxy;
 
-public record AuthenticatedRequest(String user, String clientId, ClientConfiguration clientConfiguration) {
+import org.apache.james.jwt.userinfo.UserinfoResponse;
+
+public record AuthenticatedRequest(String user, String clientId, ClientConfiguration clientConfiguration,
+                                    UserinfoResponse userInfo) {
 }

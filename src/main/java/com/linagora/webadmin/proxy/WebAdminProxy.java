@@ -15,6 +15,7 @@ package com.linagora.webadmin.proxy;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -103,19 +104,42 @@ public class WebAdminProxy {
         if (allowedUrls.isEmpty()) {
             return Mono.empty();
         }
-        String path = stripQueryString(request.uri());
+        String uri = request.uri();
         String method = request.method().name();
-        boolean allowed = allowedUrls.stream().anyMatch(rule -> rule.matches(method, path));
-        if (!allowed) {
+        Optional<Map<String, String>> capturedVars = allowedUrls.stream()
+            .flatMap(rule -> rule.match(method, uri).stream())
+            .findFirst();
+        if (capturedVars.isEmpty()) {
             return Mono.error(new AccessForbiddenException(
-                "URL not allowed for client '" + auth.clientId() + "': " + method + " " + path));
+                "URL not allowed for client '" + auth.clientId() + "': " + method + " " + uri));
         }
-        return Mono.empty();
+        return validatePatternRestrictions(auth, capturedVars.get());
     }
 
-    private static String stripQueryString(String uri) {
-        int queryIdx = uri.indexOf('?');
-        return queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
+    private Mono<Void> validatePatternRestrictions(AuthenticatedRequest auth, Map<String, String> capturedVars) {
+        for (Map.Entry<String, UrlPatternRestriction> entry : auth.clientConfiguration().urlPatternRestrictions().entrySet()) {
+            String varName = entry.getKey();
+            UrlPatternRestriction restriction = entry.getValue();
+            String urlVarValue = capturedVars.get(varName);
+            if (urlVarValue == null) {
+                continue;
+            }
+            Optional<String> claimOpt = auth.userInfo().claimByPropertyName(restriction.backingClaim());
+            if (claimOpt.isEmpty()) {
+                return Mono.error(new AccessForbiddenException(
+                    "Missing required claim '" + restriction.backingClaim() + "' for URL validation"));
+            }
+            try {
+                String expectedValue = restriction.operator().extractExpectedValue(claimOpt.get());
+                if (!expectedValue.equals(urlVarValue)) {
+                    return Mono.error(new AccessForbiddenException(
+                        "URL variable '" + varName + "' does not match claim constraint"));
+                }
+            } catch (AccessForbiddenException e) {
+                return Mono.error(e);
+            }
+        }
+        return Mono.empty();
     }
 
     private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,
