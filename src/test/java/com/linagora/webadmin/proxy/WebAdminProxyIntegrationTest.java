@@ -1664,4 +1664,175 @@ class WebAdminProxyIntegrationTest {
             assertThat(metricsBody).contains("webadmin_proxy_requests");
         }
     }
+
+    @Nested
+    class AllowedUrlsEndpoint {
+
+        private ClientAndServer oidcMockServer;
+        private MockServerClient oidcMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        private WebAdminProxyGuiceServer startProxy(Map<String, ClientConfiguration> clients) throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .clients(clients)
+                .build();
+            WebAdminProxyGuiceServer server = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            server.start();
+            return server;
+        }
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(
+                        new AllowedUrl(List.of("GET"), "/domains/{domain}/users"),
+                        new AllowedUrl(List.of(), "/domains/{domain}/aliases/*")),
+                    Map.of(), List.of()));
+            proxyServer = startProxy(clients);
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+        }
+
+        @Test
+        void shouldReturn200WithAllowedUrls() {
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/allowed/urls");
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body().asString()).contains("/domains/{domain}/users");
+            assertThat(response.body().asString()).contains("/domains/{domain}/aliases/*");
+        }
+
+        @Test
+        void shouldIncludeVerbsWhenConfigured() {
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/allowed/urls");
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body().asString()).contains("\"verb\"");
+            assertThat(response.body().asString()).contains("\"GET\"");
+        }
+
+        @Test
+        void shouldOmitVerbsWhenNotConfigured() {
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/allowed/urls");
+
+            // Second rule has no verbs — its entry has no "verb" key
+            assertThat(response.statusCode()).isEqualTo(200);
+            String body = response.body().asString();
+            // Both endpoints present
+            assertThat(body).contains("/domains/{domain}/aliases/*");
+        }
+
+        @Test
+        void shouldReturn204WhenNoAllowedUrlsConfigured() throws Exception {
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()));
+            WebAdminProxyGuiceServer emptyServer = startProxy(clients);
+            try {
+                given()
+                    .port(emptyServer.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when()
+                    .get("/.proxy/allowed/urls")
+                .then()
+                    .statusCode(204);
+            } finally {
+                emptyServer.stop();
+            }
+        }
+
+        @Test
+        void shouldReturn401WhenNoAuthorizationHeader() {
+            given()
+                .port(proxyServer.getPort())
+            .when()
+                .get("/.proxy/allowed/urls")
+            .then()
+                .statusCode(401);
+        }
+
+        @Test
+        void shouldReturn401WhenTokenIsInvalid() {
+            oidcMock.reset();
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":false}"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer invalid-token")
+            .when()
+                .get("/.proxy/allowed/urls")
+            .then()
+                .statusCode(401);
+        }
+
+        @Test
+        void shouldReturn403WhenUserNotAuthorized() throws Exception {
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(new AllowedUrl(List.of(), "/domains")),
+                    Map.of(), List.of("other@example.com")));
+            WebAdminProxyGuiceServer restrictedServer = startProxy(clients);
+            try {
+                given()
+                    .port(restrictedServer.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when()
+                    .get("/.proxy/allowed/urls")
+                .then()
+                    .statusCode(403);
+            } finally {
+                restrictedServer.stop();
+            }
+        }
+
+        @Test
+        void shouldNotForwardToBackend() throws Exception {
+            // Verifies the endpoint is answered by the proxy itself, not forwarded
+            // (no backend mock needed — a real backend request would fail with connection refused)
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/allowed/urls");
+
+            assertThat(response.statusCode()).isEqualTo(200);
+        }
+    }
 }

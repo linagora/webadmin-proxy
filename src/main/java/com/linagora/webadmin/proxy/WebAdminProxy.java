@@ -46,18 +46,21 @@ public class WebAdminProxy implements Startable {
     private static final String HOST_HEADER = "Host";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER);
+    private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";
 
     private final WebAdminProxyConfiguration configuration;
     private final OidcTokenCache tokenCache;
+    private final AllowedUrlsHandler allowedUrlsHandler;
     private final Map<String, HttpClient> backendClients;
     private final Metric requestsMetric;
     private DisposableServer server;
 
     @Inject
     public WebAdminProxy(WebAdminProxyConfiguration configuration, OidcTokenCache tokenCache,
-                          MetricFactory metricFactory) {
+                          AllowedUrlsHandler allowedUrlsHandler, MetricFactory metricFactory) {
         this.configuration = configuration;
         this.tokenCache = tokenCache;
+        this.allowedUrlsHandler = allowedUrlsHandler;
         this.requestsMetric = metricFactory.generate("webadmin.proxy.requests");
         this.backendClients = configuration.clients().entrySet().stream()
             .collect(Collectors.toMap(
@@ -90,6 +93,11 @@ public class WebAdminProxy implements Startable {
             return response.status(401).send();
         }
         String token = authHeader.substring("Bearer ".length());
+
+        if ("GET".equalsIgnoreCase(request.method().name()) && ALLOWED_URLS_PATH.equals(request.fullPath())) {
+            return allowedUrlsHandler.handle(response, token);
+        }
+
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just(new byte[0]))
             .flatMap(payload -> tokenCache.resolve(token)
