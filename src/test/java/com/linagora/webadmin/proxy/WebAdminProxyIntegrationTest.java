@@ -17,45 +17,94 @@ import static io.restassured.RestAssured.given;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
+import static org.mockserver.model.MediaType.APPLICATION_JSON;
 
+import java.net.URL;
+import java.time.Duration;
+import java.util.Map;
+import java.util.Optional;
+
+import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockserver.client.MockServerClient;
 import org.mockserver.integration.ClientAndServer;
+import org.mockserver.verify.VerificationTimes;
 
 import io.restassured.response.Response;
 
 class WebAdminProxyIntegrationTest {
 
-    private ClientAndServer mockServer;
+    static final String VALID_TOKEN = "valid-opaque-token";
+    static final String WEBADMIN_TOKEN = "webadmin-backend-secret";
+    static final String CLIENT_ID = "my-client";
+    static final String USER_EMAIL = "user@example.com";
+    static final String AUDIENCE = "webadmin";
+
+    private ClientAndServer oidcMockServer;
+    private ClientAndServer backendMockServer;
+    private MockServerClient oidcMock;
+    private MockServerClient backendMock;
     private WebAdminProxyGuiceServer proxyServer;
-    private MockServerClient mockClient;
 
     @BeforeEach
-    void setUp() {
-        mockServer = ClientAndServer.startClientAndServer(0);
-        mockClient = new MockServerClient("localhost", mockServer.getLocalPort());
+    void setUp() throws Exception {
+        oidcMockServer = ClientAndServer.startClientAndServer(0);
+        backendMockServer = ClientAndServer.startClientAndServer(0);
+        oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+        backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
 
-        WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(
-            0, "http://localhost:" + mockServer.getLocalPort());
+        WebAdminProxyConfiguration config = buildConfig();
         proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
         proxyServer.start();
+    }
+
+    private WebAdminProxyConfiguration buildConfig() throws Exception {
+        int oidcPort = oidcMockServer.getLocalPort();
+        int backendPort = backendMockServer.getLocalPort();
+
+        URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+        URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+        OidcConfiguration oidcConfiguration = new OidcConfiguration(
+            userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+
+        Map<String, ClientConfiguration> clients = Map.of(
+            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN));
+
+        return new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
     }
 
     @AfterEach
     void tearDown() {
         proxyServer.stop();
-        mockServer.stop();
+        oidcMockServer.stop();
+        backendMockServer.stop();
     }
+
+    private void stubValidToken() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+    }
+
+    // --- Happy path ---
 
     @Test
     void shouldForwardGetRequest() {
-        mockClient.when(request().withMethod("GET").withPath("/domains"))
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
             .respond(response().withStatusCode(200).withBody("[\"example.com\"]"));
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
         .when()
             .get("/domains");
 
@@ -65,11 +114,13 @@ class WebAdminProxyIntegrationTest {
 
     @Test
     void shouldForwardPostRequest() {
-        mockClient.when(request().withMethod("POST").withPath("/domains/example.com"))
+        stubValidToken();
+        backendMock.when(request().withMethod("POST").withPath("/domains/example.com"))
             .respond(response().withStatusCode(204));
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
         .when()
             .post("/domains/example.com");
 
@@ -77,18 +128,21 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Test
-    void shouldForwardPutRequest() {
-        mockClient.when(request().withMethod("PUT").withPath("/quota/count"))
+    void shouldForwardPutRequestWithBody() {
+        stubValidToken();
+        backendMock.when(request().withMethod("PUT").withPath("/quota/count"))
             .respond(response().withStatusCode(204));
 
-        Response response = given()
+        given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
             .body("1000")
         .when()
-            .put("/quota/count");
+            .put("/quota/count")
+        .then()
+            .statusCode(204);
 
-        assertThat(response.statusCode()).isEqualTo(204);
-        mockClient.verify(request()
+        backendMock.verify(request()
             .withMethod("PUT")
             .withPath("/quota/count")
             .withBody("1000"));
@@ -96,24 +150,70 @@ class WebAdminProxyIntegrationTest {
 
     @Test
     void shouldForwardDeleteRequest() {
-        mockClient.when(request().withMethod("DELETE").withPath("/domains/example.com"))
+        stubValidToken();
+        backendMock.when(request().withMethod("DELETE").withPath("/domains/example.com"))
             .respond(response().withStatusCode(204));
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
         .when()
             .delete("/domains/example.com");
 
         assertThat(response.statusCode()).isEqualTo(204);
     }
 
+    // --- Token substitution ---
+
     @Test
-    void shouldForwardRequestHeaders() {
-        mockClient.when(request().withMethod("GET").withPath("/domains"))
+    void shouldSubstituteAuthorizationHeaderWithWebadminToken() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
             .respond(response().withStatusCode(200).withBody("[]"));
 
         given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains")
+        .then()
+            .statusCode(200);
+
+        backendMock.verify(request()
+            .withMethod("GET")
+            .withPath("/domains")
+            .withHeader("Authorization", "Bearer " + WEBADMIN_TOKEN));
+    }
+
+    @Test
+    void shouldNotForwardOriginalBearerTokenToBackend() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        backendMock.verify(request()
+            .withMethod("GET")
+            .withPath("/domains")
+            .withoutHeader("Authorization", "Bearer " + VALID_TOKEN));
+    }
+
+    // --- Request/response passthrough ---
+
+    @Test
+    void shouldForwardArbitraryRequestHeaders() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
             .header("X-Custom-Header", "my-value")
             .header("X-Another-Header", "another-value")
         .when()
@@ -121,7 +221,7 @@ class WebAdminProxyIntegrationTest {
         .then()
             .statusCode(200);
 
-        mockClient.verify(request()
+        backendMock.verify(request()
             .withMethod("GET")
             .withPath("/domains")
             .withHeader("X-Custom-Header", "my-value")
@@ -130,7 +230,8 @@ class WebAdminProxyIntegrationTest {
 
     @Test
     void shouldForwardResponseHeaders() {
-        mockClient.when(request().withMethod("GET").withPath("/domains"))
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
             .respond(response().withStatusCode(200)
                 .withHeader("X-Custom-Response", "response-value")
                 .withHeader("X-Another-Response", "another-value")
@@ -138,6 +239,7 @@ class WebAdminProxyIntegrationTest {
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
         .when()
             .get("/domains");
 
@@ -148,12 +250,14 @@ class WebAdminProxyIntegrationTest {
 
     @Test
     void shouldForwardQueryParameters() {
-        mockClient.when(request().withMethod("GET").withPath("/users")
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/users")
                 .withQueryStringParameter("limit", "10"))
             .respond(response().withStatusCode(200).withBody("[\"bob@example.com\"]"));
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
             .queryParam("limit", "10")
         .when()
             .get("/users");
@@ -163,15 +267,270 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Test
-    void shouldForwardStatusCodes() {
-        mockClient.when(request().withMethod("GET").withPath("/nonexistent"))
+    void shouldForwardBackendStatusCodes() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/nonexistent"))
             .respond(response().withStatusCode(404));
 
         Response response = given()
             .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
         .when()
             .get("/nonexistent");
 
         assertThat(response.statusCode()).isEqualTo(404);
+    }
+
+    // --- 401 scenarios ---
+
+    @Test
+    void shouldReturn401WhenNoAuthorizationHeader() {
+        Response response = given()
+            .port(proxyServer.getPort())
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenBasicAuth() {
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Basic dXNlcjpwYXNz")
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenTokenIsInactive() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":false}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenAudienceMismatch() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"wrong-audience\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenAudienceMissing() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenAudienceNotInArray() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":[\"other\",\"wrong\"],\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldAcceptAudienceAsArray() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":[\"other\",\"" + AUDIENCE + "\"],\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(200);
+    }
+
+    @Test
+    void shouldReturn401WhenMissingUserClaim() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"sub\":\"some-subject\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenMissingClientId() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenUnknownClientId() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"unknown-client\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenUserinfoEndpointFails() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(401));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenIntrospectEndpointFails() {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(500));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
+    // --- Token cache ---
+
+    @Test
+    void shouldCacheTokenInfoAcrossRequests() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        given().port(proxyServer.getPort()).header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains").then().statusCode(200);
+        given().port(proxyServer.getPort()).header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains").then().statusCode(200);
+
+        oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+        oidcMock.verify(request().withPath("/userinfo"), VerificationTimes.exactly(1));
+    }
+
+    @Test
+    void shouldNotShareCacheEntriesAcrossDistinctTokens() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        given().port(proxyServer.getPort()).header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains").then().statusCode(200);
+        given().port(proxyServer.getPort()).header("Authorization", "Bearer another-token")
+            .when().get("/domains").then().statusCode(200);
+
+        oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
+        oidcMock.verify(request().withPath("/userinfo"), VerificationTimes.exactly(2));
     }
 }

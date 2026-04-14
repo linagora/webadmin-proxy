@@ -1,4 +1,15 @@
 {
   "port": "8001",
-  "webadmin.backend": "http://127.0.0.1:8000"
+  "oidc.userInfo.url": "http://127.0.0.1:8180/realms/james/protocol/openid-connect/userinfo",
+  "oidc.introspect.url": "http://127.0.0.1:8180/realms/james/protocol/openid-connect/token/introspect",
+  "oidc.introspect.credentials": "{ENV:OIDC_INTROSPECT_CREDENTIALS}",
+  "oidc.audience": "webadmin-proxy",
+  "oidc.claim.authenticated.user": "email",
+  "oidc.token.cache.expiration": "60s",
+  "clients": {
+    "twakemail-client": {
+      "webadmin.backend": "http://127.0.0.1:8000",
+      "webadmin.token": "{ENV:TWAKEMAIL_WEBADMIN_TOKEN}"
+    }
+  }
 }

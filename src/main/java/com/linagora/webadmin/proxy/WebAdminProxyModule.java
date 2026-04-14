@@ -13,8 +13,13 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.util.Map;
+
+import org.apache.james.jwt.DefaultCheckTokenClient;
+
 import com.google.inject.AbstractModule;
 import com.google.inject.Scopes;
+import com.google.inject.TypeLiteral;
 
 public class WebAdminProxyModule extends AbstractModule {
 
@@ -27,6 +32,11 @@ public class WebAdminProxyModule extends AbstractModule {
     @Override
     protected void configure() {
         bind(WebAdminProxyConfiguration.class).toInstance(configuration);
+        bind(OidcConfiguration.class).toInstance(configuration.oidcConfiguration());
+        bind(new TypeLiteral<Map<String, ClientConfiguration>>() {}).toInstance(configuration.clients());
+        bind(DefaultCheckTokenClient.class).in(Scopes.SINGLETON);
+        bind(OidcTokenResolver.class).in(Scopes.SINGLETON);
+        bind(OidcTokenCache.class).to(CaffeineOidcTokenCache.class).in(Scopes.SINGLETON);
         bind(WebAdminProxy.class).in(Scopes.SINGLETON);
     }
 }

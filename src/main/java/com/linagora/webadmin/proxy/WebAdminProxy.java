@@ -13,6 +13,10 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 
@@ -35,15 +39,22 @@ public class WebAdminProxy {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxy.class);
     private static final String HOST_HEADER = "Host";
+    private static final String AUTHORIZATION_HEADER = "Authorization";
+    private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER);
 
     private final WebAdminProxyConfiguration configuration;
-    private final HttpClient httpClient;
+    private final OidcTokenCache tokenCache;
+    private final Map<String, HttpClient> backendClients;
     private DisposableServer server;
 
     @Inject
-    public WebAdminProxy(WebAdminProxyConfiguration configuration) {
+    public WebAdminProxy(WebAdminProxyConfiguration configuration, OidcTokenCache tokenCache) {
         this.configuration = configuration;
-        this.httpClient = HttpClient.create().baseUrl(configuration.webadminBackend());
+        this.tokenCache = tokenCache;
+        this.backendClients = configuration.clients().entrySet().stream()
+            .collect(Collectors.toMap(
+                Map.Entry::getKey,
+                entry -> HttpClient.create().baseUrl(entry.getValue().webadminBackend())));
     }
 
     public void start() {
@@ -66,18 +77,36 @@ public class WebAdminProxy {
     }
 
     private Publisher<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
+        String authHeader = request.requestHeaders().get(AUTHORIZATION_HEADER);
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return response.status(401).send();
+        }
+        String token = authHeader.substring("Bearer ".length());
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just(new byte[0]))
-            .flatMap(payload -> dispatchToBackend(request, response, payload));
+            .flatMap(payload -> tokenCache.resolve(token)
+                .flatMap(auth -> dispatchToBackend(request, response, payload, auth))
+                .onErrorResume(OidcAuthenticationException.class, e -> {
+                    LOGGER.info("Authentication rejected", e);
+                    return response.status(401).send().then();
+                }));
     }
 
-    private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response, byte[] payload) {
-        return Mono.from(httpClient
-            .headers(outgoing -> request.requestHeaders().forEach(entry -> {
-                if (!entry.getKey().equalsIgnoreCase(HOST_HEADER)) {
-                    outgoing.add(entry.getKey(), entry.getValue());
-                }
-            }))
+    private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,
+                                          byte[] payload, AuthenticatedRequest auth) {
+        LOGGER.debug("Proxying request: method={}, endpoint={}, clientId={}, user={}",
+            request.method().name(), request.uri(), auth.clientId(), auth.user());
+        HttpClient backendClient = backendClients.get(auth.clientId());
+        String webadminToken = auth.clientConfiguration().webadminToken();
+        return Mono.from(backendClient
+            .headers(outgoing -> {
+                request.requestHeaders().forEach(entry -> {
+                    if (RESERVED_HEADERS.stream().noneMatch(h -> h.equalsIgnoreCase(entry.getKey()))) {
+                        outgoing.add(entry.getKey(), entry.getValue());
+                    }
+                });
+                outgoing.set(AUTHORIZATION_HEADER, "Bearer " + webadminToken);
+            })
             .request(request.method())
             .uri(request.uri())
             .send((req, out) -> out.sendByteArray(Mono.just(payload)))
