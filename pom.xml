@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Webadmin Proxy - OIDC-authenticated proxy for Apache James webadmin API
+  ~
+  ~ Copyright (C) 2025 Linagora
+  ~
+  ~ This program is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU Affero General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ This program is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+  ~ GNU Affero General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Affero General Public License
+  ~ along with this program. If not, see <https://www.gnu.org/licenses/>.
+  -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.linagora.tmail</groupId>
+        <artifactId>tmail-backend-parent</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../tmail-backend/pom.xml</relativePath>
+    </parent>
+
+    <groupId>com.linagora</groupId>
+    <artifactId>webadmin-proxy</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>WebAdmin Proxy</name>
+    <description>OIDC-authenticated proxy for Apache James webadmin API</description>
+    <inceptionYear>2025</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>GNU AFFERO GENERAL PUBLIC LICENSE Version 3</name>
+            <url>https://www.gnu.org/licenses/agpl-3.0.en.html</url>
+        </license>
+    </licenses>
+
+    <properties>
+        <james.groupId>org.apache.james</james.groupId>
+        <james.version>3.10.0-SNAPSHOT</james.version>
+        <maven.compiler.source>25</maven.compiler.source>
+        <maven.compiler.target>25</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <jib.base.image>eclipse-temurin:26-jre-noble</jib.base.image>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>${james.groupId}</groupId>
+                <artifactId>james-project</artifactId>
+                <version>${james.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>${james.groupId}</groupId>
+                <artifactId>james-server-guice</artifactId>
+                <version>${james.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <dependency>
+            <groupId>ch.qos.logback</groupId>
+            <artifactId>logback-classic</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.inject</groupId>
+            <artifactId>guice</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty-http</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>io.rest-assured</groupId>
+            <artifactId>rest-assured</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mock-server</groupId>
+            <artifactId>mockserver-netty</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <argLine>-Xms256m -Xmx512m</argLine>
+                    <reuseForks>true</reuseForks>
+                    <forkedProcessTimeoutInSeconds>300</forkedProcessTimeoutInSeconds>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>com.google.cloud.tools</groupId>
+                <artifactId>jib-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>buildTar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <from>
+                        <image>${jib.base.image}</image>
+                    </from>
+                    <to>
+                        <image>linagora/webadmin-proxy</image>
+                        <tags>
+                            <tag>latest</tag>
+                        </tags>
+                    </to>
+                    <container>
+                        <mainClass>com.linagora.webadmin.proxy.WebAdminProxyMain</mainClass>
+                        <appRoot>/root</appRoot>
+                        <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+                    </container>
+                    <extraDirectories>
+                        <paths>
+                            <path>
+                                <from>src/main/conf</from>
+                                <into>/root/conf</into>
+                            </path>
+                        </paths>
+                    </extraDirectories>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>ci</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.google.cloud.tools</groupId>
+                        <artifactId>jib-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <from>
+                                <image>${jib.base.image}</image>
+                                <platforms>
+                                    <platform>
+                                        <architecture>amd64</architecture>
+                                        <os>linux</os>
+                                    </platform>
+                                    <platform>
+                                        <architecture>arm64</architecture>
+                                        <os>linux</os>
+                                    </platform>
+                                </platforms>
+                            </from>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>

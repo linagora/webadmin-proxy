@@ -1,0 +1,4 @@
+{
+  "port": "8001",
+  "webadmin.backend": "http://127.0.0.1:8000"
+}
