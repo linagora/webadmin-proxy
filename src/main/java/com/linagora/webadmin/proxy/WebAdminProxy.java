@@ -101,7 +101,7 @@ public class WebAdminProxy implements Startable {
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just(new byte[0]))
             .flatMap(payload -> tokenCache.resolve(token)
-                .flatMap(auth -> checkUserAuthorized(auth)
+                .flatMap(auth -> auth.checkUserAuthorized()
                     .then(checkUrlAccess(auth, request))
                     .then(dispatchToBackend(request, response, payload, auth)))
                 .onErrorResume(AccessForbiddenException.class, e -> {
@@ -112,18 +112,6 @@ public class WebAdminProxy implements Startable {
                     LOGGER.info("Authentication rejected", e);
                     return response.status(401).send().then();
                 }));
-    }
-
-    private Mono<Void> checkUserAuthorized(AuthenticatedRequest auth) {
-        List<String> authorizedUsers = auth.clientConfiguration().authorizedUsers();
-        if (authorizedUsers.isEmpty()) {
-            return Mono.empty();
-        }
-        if (authorizedUsers.contains(auth.user())) {
-            return Mono.empty();
-        }
-        return Mono.error(new AccessForbiddenException(
-            "User '" + auth.user() + "' is not in the authorized users list for client '" + auth.clientId() + "'"));
     }
 
     private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, HttpServerRequest request) {

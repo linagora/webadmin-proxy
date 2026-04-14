@@ -15,6 +15,7 @@ package com.linagora.webadmin.proxy;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
@@ -92,8 +93,8 @@ public record WebAdminProxyConfiguration(int port,
 
         int port = Integer.parseInt(resolve(root.get("port").asText()));
 
-        URL userInfoUrl = new URL(resolve(root.get("oidc.userInfo.url").asText()));
-        URL introspectUrl = new URL(resolve(root.get("oidc.introspect.url").asText()));
+        URL userInfoUrl = URI.create(resolve(root.get("oidc.userInfo.url").asText())).toURL();
+        URL introspectUrl = URI.create(resolve(root.get("oidc.introspect.url").asText())).toURL();
         Optional<String> introspectCredentials = Optional.ofNullable(root.get("oidc.introspect.credentials"))
             .map(node -> resolve(node.asText()));
         IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);

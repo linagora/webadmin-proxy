@@ -43,7 +43,7 @@ public class AllowedUrlsHandler {
 
     public Mono<Void> handle(HttpServerResponse response, String token) {
         return tokenCache.resolve(token)
-            .flatMap(auth -> checkUserAuthorized(auth)
+            .flatMap(auth -> auth.checkUserAuthorized()
                 .then(serveAllowedUrls(auth, response)))
             .onErrorResume(AccessForbiddenException.class, e -> {
                 LOGGER.info("Access forbidden for allowed URLs endpoint", e);
@@ -53,18 +53,6 @@ public class AllowedUrlsHandler {
                 LOGGER.info("Authentication rejected for allowed URLs endpoint", e);
                 return response.status(401).send().then();
             });
-    }
-
-    private Mono<Void> checkUserAuthorized(AuthenticatedRequest auth) {
-        List<String> authorizedUsers = auth.clientConfiguration().authorizedUsers();
-        if (authorizedUsers.isEmpty()) {
-            return Mono.empty();
-        }
-        if (authorizedUsers.contains(auth.user())) {
-            return Mono.empty();
-        }
-        return Mono.error(new AccessForbiddenException(
-            "User '" + auth.user() + "' is not in the authorized users list for client '" + auth.clientId() + "'"));
     }
 
     private Mono<Void> serveAllowedUrls(AuthenticatedRequest auth, HttpServerResponse response) {
