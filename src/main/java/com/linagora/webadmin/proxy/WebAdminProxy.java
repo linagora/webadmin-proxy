@@ -13,6 +13,7 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -85,7 +86,8 @@ public class WebAdminProxy {
         return request.receive().aggregate().asByteArray()
             .switchIfEmpty(Mono.just(new byte[0]))
             .flatMap(payload -> tokenCache.resolve(token)
-                .flatMap(auth -> dispatchToBackend(request, response, payload, auth))
+                .flatMap(auth -> checkUrlAccess(auth, request)
+                    .then(dispatchToBackend(request, response, payload, auth)))
                 .onErrorResume(AccessForbiddenException.class, e -> {
                     LOGGER.info("Access forbidden", e);
                     return response.status(403).send().then();
@@ -94,6 +96,26 @@ public class WebAdminProxy {
                     LOGGER.info("Authentication rejected", e);
                     return response.status(401).send().then();
                 }));
+    }
+
+    private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, HttpServerRequest request) {
+        List<AllowedUrl> allowedUrls = auth.clientConfiguration().allowedUrls();
+        if (allowedUrls.isEmpty()) {
+            return Mono.empty();
+        }
+        String path = stripQueryString(request.uri());
+        String method = request.method().name();
+        boolean allowed = allowedUrls.stream().anyMatch(rule -> rule.matches(method, path));
+        if (!allowed) {
+            return Mono.error(new AccessForbiddenException(
+                "URL not allowed for client '" + auth.clientId() + "': " + method + " " + path));
+        }
+        return Mono.empty();
+    }
+
+    private static String stripQueryString(String uri) {
+        int queryIdx = uri.indexOf('?');
+        return queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
     }
 
     private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,

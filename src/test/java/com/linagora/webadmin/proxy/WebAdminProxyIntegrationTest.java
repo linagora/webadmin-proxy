@@ -21,6 +21,7 @@ import static org.mockserver.model.MediaType.APPLICATION_JSON;
 
 import java.net.URL;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -72,7 +73,7 @@ class WebAdminProxyIntegrationTest {
             userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
 
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of()));
+            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of()));
 
         return new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
     }
@@ -518,6 +519,172 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    class UrlRestrictions {
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void startProxyWith(List<AllowedUrl> allowedUrls) throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls));
+            WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        private void stubValidToken() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        }
+
+        @Test
+        void shouldAllowRequestMatchingExactEndpoint() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains").statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldReturn403WhenEndpointNotInAllowList() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains")));
+            stubValidToken();
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/users").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldAllowOnlyConfiguredVerbs() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of("GET"), "/domains")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains").statusCode()).isEqualTo(200);
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().delete("/domains").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldAllowAllVerbsWhenVerbListIsEmpty() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains")));
+            stubValidToken();
+            backendMock.when(request().withMethod("DELETE").withPath("/domains"))
+                .respond(response().withStatusCode(204));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().delete("/domains").statusCode()).isEqualTo(204);
+        }
+
+        @Test
+        void shouldMatchTemplateVariable() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains/{domain}/aliases")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/aliases"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/aliases").statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldNotMatchAcrossSegmentsWithTemplateVariable() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains/{domain}/aliases")));
+            stubValidToken();
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/other/aliases").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldMatchWildcard() throws Exception {
+            startProxyWith(List.of(new AllowedUrl(List.of(), "/domains/{domain}/aliases/*")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/aliases/bob@example.com").statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldMatchMultipleRules() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of("GET"), "/domains"),
+                new AllowedUrl(List.of(), "/users/{user}")));
+            stubValidToken();
+            backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains").statusCode()).isEqualTo(200);
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().delete("/users/bob@example.com").statusCode()).isEqualTo(200);
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().post("/domains").statusCode()).isEqualTo(403);
+        }
+
+        @Test
+        void shouldAllowAllUrlsWhenAllowedUrlsIsEmpty() throws Exception {
+            startProxyWith(List.of());
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/anything"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            assertThat(given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/anything").statusCode()).isEqualTo(200);
+        }
+    }
+
+    @Nested
     class ExpectedClaimsValidation {
 
         static final String RESTRICTED_CLIENT_ID = "restricted-client";
@@ -550,7 +717,8 @@ class WebAdminProxyIntegrationTest {
                 RESTRICTED_CLIENT_ID, new ClientConfiguration(
                     "http://localhost:" + backendPort,
                     WEBADMIN_TOKEN,
-                    Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE)));
+                    Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE),
+                    List.of()));
 
             WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(0, oidcConfiguration, clients);
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));

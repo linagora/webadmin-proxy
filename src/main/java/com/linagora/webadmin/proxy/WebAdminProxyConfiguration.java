@@ -18,8 +18,10 @@ import java.io.IOException;
 import java.net.URL;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -71,10 +73,23 @@ public record WebAdminProxyConfiguration(int port,
                 claimsNode.fields().forEachRemaining(claim ->
                     expectedClaims.put(claim.getKey(), resolve(claim.getValue().asText())));
             }
+            List<AllowedUrl> allowedUrls = new ArrayList<>();
+            JsonNode allowedUrlsNode = clientNode.get("allowed.urls");
+            if (allowedUrlsNode != null) {
+                for (JsonNode urlNode : allowedUrlsNode) {
+                    List<String> verbs = new ArrayList<>();
+                    JsonNode verbsNode = urlNode.get("verb");
+                    if (verbsNode != null) {
+                        verbsNode.forEach(v -> verbs.add(v.asText()));
+                    }
+                    allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText()));
+                }
+            }
             clients.put(entry.getKey(), new ClientConfiguration(
                 resolve(clientNode.get("webadmin.backend").asText()),
                 resolve(clientNode.get("webadmin.token").asText()),
-                expectedClaims));
+                expectedClaims,
+                allowedUrls));
         }
 
         WebAdminProxyConfiguration config = new WebAdminProxyConfiguration(port, oidcConfiguration, clients);
