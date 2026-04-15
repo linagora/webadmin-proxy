@@ -2145,5 +2145,92 @@ class WebAdminProxyIntegrationTest {
             .then()
                 .statusCode(401);
         }
+
+        // --- CORS on .proxy endpoints ---
+
+        private WebAdminProxyGuiceServer startProxyWithCors(MockServerClient oidcMock, List<String> corsOrigins) throws Exception {
+            stubOidc(oidcMock, "");
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .clients(clients)
+                .corsAllowOrigins(corsOrigins)
+                .build();
+            WebAdminProxyGuiceServer server = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            server.start();
+            return server;
+        }
+
+        @Test
+        void whoamiShouldReturnCorsHeadersForAllowedOrigin() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithCors(oidcMock, List.of("https://app.example.com"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/.proxy/whoami")
+            .then()
+                .statusCode(200)
+                .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
+
+        @Test
+        void myDomainShouldReturnCorsHeadersForAllowedOrigin() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithCors(oidcMock, List.of("https://app.example.com"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(200)
+                .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
+
+        @Test
+        void allowedUrlsShouldReturnCorsHeadersForAllowedOrigin() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithCors(oidcMock, List.of("https://app.example.com"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/.proxy/allowed/urls")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
+
+        @Test
+        void preflightShouldReturn204ForProxyEndpoints() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithCors(oidcMock, List.of("https://app.example.com"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "GET")
+            .when()
+                .options("/.proxy/whoami")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
     }
 }
