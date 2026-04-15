@@ -10,7 +10,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
   "oidc.userInfo.url": "http://lemonldap:19090/oauth2/userinfo",
   "oidc.introspect.url": "http://lemonldap:19090/oauth2/introspect",
   "oidc.introspect.credentials": "Bearer {ENV:OIDC_INTROSPECT_CREDENTIALS}",
-  "oidc.audience": "webadmin-proxy",
+  "oidc.audience": ["webadmin-proxy", "webadmin-proxy-alt"],
   "oidc.claim.authenticated.user": "email",
   "oidc.token.cache.expiration": "60s",
   "cors.allow.origin": ["https://twake-mail-admin.linagora.com", "https://twake-calendar-admin.linagora.com"],
@@ -47,7 +47,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `oidc.userInfo.url` | yes | OIDC userinfo endpoint URL |
 | `oidc.introspect.url` | yes | OIDC token introspection endpoint URL |
 | `oidc.introspect.credentials` | no | Credentials sent with introspect requests (e.g. `Bearer <token>`) |
-| `oidc.audience` | yes | Expected value of the `aud` claim. Tokens with a different audience are rejected with 401 |
+| `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values. Tokens matching none of the configured audiences are rejected with 401 |
 | `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`) |
 | `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
 | `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added |

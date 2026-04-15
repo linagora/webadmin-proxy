@@ -15,12 +15,13 @@ package com.linagora.webadmin.proxy;
 
 import java.net.URL;
 import java.time.Duration;
+import java.util.List;
 
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 
 public record OidcConfiguration(URL userInfoUrl,
                                  IntrospectionEndpoint introspectionEndpoint,
-                                 String audience,
+                                 List<String> audiences,
                                  String userClaim,
                                  Duration tokenCacheExpiration) {
 }

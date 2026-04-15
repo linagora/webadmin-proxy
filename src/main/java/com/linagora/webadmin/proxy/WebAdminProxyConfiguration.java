@@ -106,12 +106,18 @@ public record WebAdminProxyConfiguration(int port,
             .map(node -> resolve(node.asText()));
         IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);
 
-        String audience = resolve(root.get("oidc.audience").asText());
+        JsonNode audienceNode = root.get("oidc.audience");
+        List<String> audiences = new ArrayList<>();
+        if (audienceNode.isArray()) {
+            audienceNode.forEach(n -> audiences.add(resolve(n.asText())));
+        } else {
+            audiences.add(resolve(audienceNode.asText()));
+        }
         String userClaim = resolve(root.get("oidc.claim.authenticated.user").asText());
         Duration cacheExpiration = DurationParser.parse(resolve(root.get("oidc.token.cache.expiration").asText()), ChronoUnit.SECONDS);
 
         OidcConfiguration oidcConfiguration = new OidcConfiguration(
-            userInfoUrl, introspectionEndpoint, audience, userClaim, cacheExpiration);
+            userInfoUrl, introspectionEndpoint, List.copyOf(audiences), userClaim, cacheExpiration);
 
         Map<String, ClientConfiguration> clients = new HashMap<>();
         Iterator<Map.Entry<String, JsonNode>> clientEntries = root.get("clients").fields();
@@ -188,8 +194,8 @@ public record WebAdminProxyConfiguration(int port,
         }
 
         WebAdminProxyConfiguration config = builder.build();
-        LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audience={}, userClaim={}, clients={}",
-            port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"), audience, userClaim, clients.keySet());
+        LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audiences={}, userClaim={}, clients={}",
+            port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"), audiences, userClaim, clients.keySet());
         return config;
     }
 

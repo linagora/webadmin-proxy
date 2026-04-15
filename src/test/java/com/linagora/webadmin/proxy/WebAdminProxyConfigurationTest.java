@@ -79,9 +79,43 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
-        void shouldParseAudience() throws Exception {
+        void shouldParseAudienceAsString() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            assertThat(config.oidcConfiguration().audience()).isEqualTo("webadmin-proxy");
+            assertThat(config.oidcConfiguration().audiences()).containsExactly("webadmin-proxy");
+        }
+
+        @Test
+        void shouldParseAudienceAsArray() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": ["aud-a", "aud-b"],
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.oidcConfiguration().audiences()).containsExactly("aud-a", "aud-b");
+        }
+
+        @Test
+        void shouldParseSingleElementAudienceArray() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": ["webadmin-proxy"],
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.oidcConfiguration().audiences()).containsExactly("webadmin-proxy");
         }
 
         @Test
@@ -424,7 +458,7 @@ class WebAdminProxyConfigurationTest {
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.oidcConfiguration().audience()).isEqualTo(home);
+            assertThat(config.oidcConfiguration().audiences()).containsExactly(home);
         }
 
         @Test

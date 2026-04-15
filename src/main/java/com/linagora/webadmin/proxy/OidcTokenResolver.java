@@ -13,6 +13,7 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -62,7 +63,7 @@ public class OidcTokenResolver {
 
         if (!audienceMatches(introspect)) {
             return Mono.error(new OidcAuthenticationException(
-                "Invalid audience. Expected: " + oidcConfiguration.audience()));
+                "Invalid audience. Expected one of: " + oidcConfiguration.audiences()));
         }
 
         String user = userInfo.claimByPropertyName(oidcConfiguration.userClaim())
@@ -95,19 +96,19 @@ public class OidcTokenResolver {
     }
 
     private boolean audienceMatches(TokenIntrospectionResponse introspect) {
-        String expected = oidcConfiguration.audience();
+        List<String> expected = oidcConfiguration.audiences();
         JsonNode audNode = introspect.json().get("aud");
         if (audNode == null) {
             return false;
         }
         if (audNode.isArray()) {
             for (JsonNode node : audNode) {
-                if (expected.equals(node.asText())) {
+                if (expected.contains(node.asText())) {
                     return true;
                 }
             }
             return false;
         }
-        return expected.equals(audNode.asText());
+        return expected.contains(audNode.asText());
     }
 }
