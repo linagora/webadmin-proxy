@@ -66,6 +66,10 @@ public class WebAdminProxyGuiceServer {
         LOGGER.info("WebAdmin proxy server stopped");
     }
 
+    public void awaitStop() {
+        proxy.awaitStop();
+    }
+
     public int getPort() {
         return proxy.getPort();
     }

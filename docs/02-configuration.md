@@ -13,6 +13,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
   "oidc.audience": "webadmin-proxy",
   "oidc.claim.authenticated.user": "email",
   "oidc.token.cache.expiration": "60s",
+  "cors.allow.origin": ["https://twake-mail-admin.linagora.com", "https://twake-calendar-admin.linagora.com"],
   "self.webadmin.enabled": "true",
   "self.webadmin.port": "8002",
   "clients": {
@@ -49,6 +50,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `oidc.audience` | yes | Expected value of the `aud` claim. Tokens with a different audience are rejected with 401 |
 | `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`) |
 | `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
+| `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added |
 | `self.webadmin.enabled` | no | `true` to start the self-admin HTTP server. Defaults to `false` |
 | `self.webadmin.port` | no | Port for the self-admin server. Required when `self.webadmin.enabled` is `true`. Use `0` for a random port |
 | `clients` | yes | Map of client configurations, keyed by OIDC `client_id` |

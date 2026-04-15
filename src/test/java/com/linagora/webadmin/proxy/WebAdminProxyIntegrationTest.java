@@ -1835,4 +1835,169 @@ class WebAdminProxyIntegrationTest {
             assertThat(response.statusCode()).isEqualTo(200);
         }
     }
+
+    @Nested
+    class Cors {
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        private WebAdminProxyGuiceServer startProxy(List<String> corsOrigins) throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .clients(clients)
+                .corsAllowOrigins(corsOrigins)
+                .build();
+            WebAdminProxyGuiceServer server = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            server.start();
+            return server;
+        }
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            MockServerClient backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+            proxyServer = startProxy(List.of("https://app.example.com", "https://other.example.com"));
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        @Test
+        void shouldReflectMatchingOriginHeader() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/domains")
+            .then()
+                .statusCode(200)
+                .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
+
+        @Test
+        void shouldReflectSecondAllowedOrigin() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://other.example.com")
+            .when()
+                .get("/domains")
+            .then()
+                .statusCode(200)
+                .header("Access-Control-Allow-Origin", "https://other.example.com");
+        }
+
+        @Test
+        void shouldNotSetAllowOriginForUnknownOrigin() {
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://evil.example.com")
+            .when()
+                .get("/domains");
+
+            assertThat(response.header("Access-Control-Allow-Origin")).isNull();
+        }
+
+        @Test
+        void shouldSetAllowCredentialsForSpecificOrigin() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/domains")
+            .then()
+                .header("Access-Control-Allow-Credentials", "true");
+        }
+
+        @Test
+        void shouldSetVaryOriginForSpecificOrigin() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/domains")
+            .then()
+                .header("Vary", "Origin");
+        }
+
+        @Test
+        void preflightShouldReturn204WithoutAuth() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "GET")
+            .when()
+                .options("/domains")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Allow-Origin", "https://app.example.com")
+                .header("Access-Control-Allow-Methods", org.hamcrest.Matchers.containsString("GET"));
+        }
+
+        @Test
+        void shouldNotSetCorsHeadersWhenNotConfigured() throws Exception {
+            WebAdminProxyGuiceServer noCorsServer = startProxy(List.of());
+            try {
+                Response response = given()
+                    .port(noCorsServer.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                    .header("Origin", "https://app.example.com")
+                .when()
+                    .get("/domains");
+
+                assertThat(response.header("Access-Control-Allow-Origin")).isNull();
+            } finally {
+                noCorsServer.stop();
+            }
+        }
+
+        @Test
+        void wildcardShouldAllowAnyOrigin() throws Exception {
+            WebAdminProxyGuiceServer wildcardServer = startProxy(List.of("*"));
+            try {
+                given()
+                    .port(wildcardServer.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                    .header("Origin", "https://anything.example.com")
+                .when()
+                    .get("/domains")
+                .then()
+                    .header("Access-Control-Allow-Origin", "*");
+            } finally {
+                wildcardServer.stop();
+            }
+        }
+    }
 }

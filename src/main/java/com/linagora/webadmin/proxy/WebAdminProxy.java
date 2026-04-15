@@ -80,6 +80,10 @@ public class WebAdminProxy implements Startable {
         return server.port();
     }
 
+    public void awaitStop() {
+        server.onDispose().block();
+    }
+
     public void stop() {
         if (server != null) {
             server.disposeNow();
@@ -88,6 +92,12 @@ public class WebAdminProxy implements Startable {
     }
 
     private Publisher<Void> forwardRequest(HttpServerRequest request, HttpServerResponse response) {
+        addCorsHeaders(request, response);
+
+        if ("OPTIONS".equalsIgnoreCase(request.method().name())) {
+            return response.status(204).send().then();
+        }
+
         String authHeader = request.requestHeaders().get(AUTHORIZATION_HEADER);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return response.status(401).send();
@@ -112,6 +122,26 @@ public class WebAdminProxy implements Startable {
                     LOGGER.info("Authentication rejected", e);
                     return response.status(401).send().then();
                 }));
+    }
+
+    private void addCorsHeaders(HttpServerRequest request, HttpServerResponse response) {
+        List<String> allowedOrigins = configuration.corsAllowOrigins();
+        if (allowedOrigins.isEmpty()) {
+            return;
+        }
+        String requestOrigin = request.requestHeaders().get("Origin");
+        if (requestOrigin == null) {
+            return;
+        }
+        response.header("Access-Control-Allow-Methods", "DELETE, GET, PATCH, POST, PUT");
+        response.header("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept");
+        if (allowedOrigins.contains("*")) {
+            response.header("Access-Control-Allow-Origin", "*");
+        } else if (allowedOrigins.contains(requestOrigin)) {
+            response.header("Access-Control-Allow-Origin", requestOrigin);
+            response.header("Access-Control-Allow-Credentials", "true");
+            response.header("Vary", "Origin");
+        }
     }
 
     private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, HttpServerRequest request) {

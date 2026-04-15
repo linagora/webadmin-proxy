@@ -40,7 +40,8 @@ public record WebAdminProxyConfiguration(int port,
                                           OidcConfiguration oidcConfiguration,
                                           Map<String, ClientConfiguration> clients,
                                           Optional<Integer> selfAdminPort,
-                                          boolean selfAdminEnabled) {
+                                          boolean selfAdminEnabled,
+                                          List<String> corsAllowOrigins) {
 
     public static Builder builder() {
         return new Builder();
@@ -52,6 +53,7 @@ public record WebAdminProxyConfiguration(int port,
         private Map<String, ClientConfiguration> clients = new HashMap<>();
         private Optional<Integer> selfAdminPort = Optional.empty();
         private boolean selfAdminEnabled = false;
+        private List<String> corsAllowOrigins = new ArrayList<>();
 
         public Builder port(int port) {
             this.port = port;
@@ -78,8 +80,13 @@ public record WebAdminProxyConfiguration(int port,
             return this;
         }
 
+        public Builder corsAllowOrigins(List<String> origins) {
+            this.corsAllowOrigins = new ArrayList<>(origins);
+            return this;
+        }
+
         public WebAdminProxyConfiguration build() {
-            return new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled);
+            return new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins));
         }
     }
 
@@ -168,6 +175,16 @@ public record WebAdminProxyConfiguration(int port,
             .ifPresent(builder::selfAdminPort);
         if (selfAdminEnabled) {
             builder.selfAdminEnabled();
+        }
+        JsonNode corsNode = root.get("cors.allow.origin");
+        if (corsNode != null) {
+            List<String> origins = new ArrayList<>();
+            if (corsNode.isArray()) {
+                corsNode.forEach(n -> origins.add(resolve(n.asText())));
+            } else {
+                origins.add(resolve(corsNode.asText()));
+            }
+            builder.corsAllowOrigins(origins);
         }
 
         WebAdminProxyConfiguration config = builder.build();

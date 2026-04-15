@@ -40,5 +40,7 @@ public class WebAdminProxyMain {
             LOGGER.info("Shutdown signal received");
             server.stop();
         }));
+
+        server.awaitStop();
     }
 }
