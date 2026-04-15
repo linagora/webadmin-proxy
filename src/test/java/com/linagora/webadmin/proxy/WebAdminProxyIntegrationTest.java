@@ -2000,4 +2000,150 @@ class WebAdminProxyIntegrationTest {
             }
         }
     }
+
+    @Nested
+    class ProxyInfo {
+
+        private ClientAndServer oidcMockServer;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        private void stubOidc(MockServerClient oidcMock, String extraClaims) {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"" + extraClaims + "}"));
+        }
+
+        private WebAdminProxyGuiceServer startProxy(MockServerClient oidcMock) throws Exception {
+            return startProxyWithOidc(oidcMock, "");
+        }
+
+        private WebAdminProxyGuiceServer startProxyWithOidc(MockServerClient oidcMock, String extraClaims) throws Exception {
+            stubOidc(oidcMock, extraClaims);
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, AUDIENCE, "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .clients(clients)
+                .build();
+            WebAdminProxyGuiceServer server = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            server.start();
+            return server;
+        }
+
+        @BeforeEach
+        void setUp() {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+        }
+
+        @AfterEach
+        void tearDown() {
+            if (proxyServer != null) {
+                proxyServer.stop();
+            }
+            oidcMockServer.stop();
+        }
+
+        // --- whoami ---
+
+        @Test
+        void whoamiShouldReturnEmail() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxy(oidcMock);
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/whoami")
+            .then()
+                .statusCode(200)
+                .body("email", org.hamcrest.Matchers.equalTo(USER_EMAIL));
+        }
+
+        @Test
+        void whoamiShouldReturn401WithoutToken() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxy(oidcMock);
+
+            given()
+                .port(proxyServer.getPort())
+            .when()
+                .get("/.proxy/whoami")
+            .then()
+                .statusCode(401);
+        }
+
+        // --- myDomain ---
+
+        @Test
+        void myDomainShouldUseDomainClaimWhenPresent() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithOidc(oidcMock, ",\"domain\":\"custom-domain.com\"");
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(200)
+                .body("domain", org.hamcrest.Matchers.equalTo("custom-domain.com"));
+        }
+
+        @Test
+        void myDomainShouldFallbackToEmailDomainWhenNoDomainClaim() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxy(oidcMock);
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(200)
+                .body("domain", org.hamcrest.Matchers.equalTo("example.com"));
+        }
+
+        @Test
+        void myDomainShouldPreferDomainClaimOverEmailDomain() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            // email is user@example.com but domain claim says something-else.com
+            proxyServer = startProxyWithOidc(oidcMock, ",\"domain\":\"something-else.com\"");
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(200)
+                .body("domain", org.hamcrest.Matchers.equalTo("something-else.com"));
+        }
+
+        @Test
+        void myDomainShouldReturn401WithoutToken() throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxy(oidcMock);
+
+            given()
+                .port(proxyServer.getPort())
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(401);
+        }
+    }
 }

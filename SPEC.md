@@ -433,3 +433,28 @@ Write a concise but complete `/docs` folder with the following pages:
  - `02-configuration.md`
  - `03-build.md`
  - `04-run-with-docker.md`
+
+### Step 10: Proxy self-service info endpoints
+
+Enable frontends to retrieve contextual information about the authenticated user without parsing OIDC tokens directly.
+
+#### Endpoints
+
+| Endpoint | Response |
+|----------|----------|
+| `GET /.proxy/whoami` | `{"email":"btellier@linagora.com"}` |
+| `GET /.proxy/myDomain` | `{"domain":"linagora.com"}` |
+
+Both endpoints require a valid Bearer token and apply the same `authorized.users` check as regular proxy requests. They are never forwarded to the James backend.
+
+#### Domain resolution logic for `myDomain`
+
+1. If the `domain` claim is present in userinfo, use its value directly.
+2. Otherwise, extract the domain part of the email claim (everything after `@`).
+3. If neither is available (no `domain` claim and user identity is not an email address), return 403.
+
+#### Goal
+
+Allow Twake Mail functional admin frontend to auto-populate user context (current user identity, managed domain) without requiring the frontend to parse or introspect OIDC tokens.
+
+Definition of done: Write IT tests.

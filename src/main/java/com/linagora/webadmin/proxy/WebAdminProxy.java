@@ -47,20 +47,25 @@ public class WebAdminProxy implements Startable {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER);
     private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";
+    private static final String WHOAMI_PATH = "/.proxy/whoami";
+    private static final String MY_DOMAIN_PATH = "/.proxy/myDomain";
 
     private final WebAdminProxyConfiguration configuration;
     private final OidcTokenCache tokenCache;
     private final AllowedUrlsHandler allowedUrlsHandler;
+    private final ProxyInfoHandler proxyInfoHandler;
     private final Map<String, HttpClient> backendClients;
     private final Metric requestsMetric;
     private DisposableServer server;
 
     @Inject
     public WebAdminProxy(WebAdminProxyConfiguration configuration, OidcTokenCache tokenCache,
-                          AllowedUrlsHandler allowedUrlsHandler, MetricFactory metricFactory) {
+                          AllowedUrlsHandler allowedUrlsHandler, ProxyInfoHandler proxyInfoHandler,
+                          MetricFactory metricFactory) {
         this.configuration = configuration;
         this.tokenCache = tokenCache;
         this.allowedUrlsHandler = allowedUrlsHandler;
+        this.proxyInfoHandler = proxyInfoHandler;
         this.requestsMetric = metricFactory.generate("webadmin.proxy.requests");
         this.backendClients = configuration.clients().entrySet().stream()
             .collect(Collectors.toMap(
@@ -104,8 +109,17 @@ public class WebAdminProxy implements Startable {
         }
         String token = authHeader.substring("Bearer ".length());
 
-        if ("GET".equalsIgnoreCase(request.method().name()) && ALLOWED_URLS_PATH.equals(request.fullPath())) {
-            return allowedUrlsHandler.handle(response, token);
+        if ("GET".equalsIgnoreCase(request.method().name())) {
+            String path = request.fullPath();
+            if (ALLOWED_URLS_PATH.equals(path)) {
+                return allowedUrlsHandler.handle(response, token);
+            }
+            if (WHOAMI_PATH.equals(path)) {
+                return proxyInfoHandler.handleWhoami(response, token);
+            }
+            if (MY_DOMAIN_PATH.equals(path)) {
+                return proxyInfoHandler.handleMyDomain(response, token);
+            }
         }
 
         return request.receive().aggregate().asByteArray()

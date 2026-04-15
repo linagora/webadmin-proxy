@@ -123,10 +123,12 @@ When `self.webadmin.enabled: true`, the following endpoints are available on `se
 | `/healthcheck` | `GET` | Returns 200 when the server has fully started |
 | `/healthcheck/checks` | `GET` | Lists individual health checks |
 
-## Proxy self-service endpoint
+## Proxy self-service endpoints
 
-Available on the main proxy port, authenticated via OIDC:
+Available on the main proxy port, authenticated via OIDC. All endpoints require a valid Bearer token and apply the same `authorized.users` check as regular requests. They are never forwarded to the James backend.
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/.proxy/allowed/urls` | `GET` | Returns the `allowed.urls` list for the caller's client as JSON. Returns 204 if not configured. Intended for frontends that adapt their UI based on permission level |
+| `/.proxy/whoami` | `GET` | Returns the authenticated user identity: `{"email":"user@example.com"}` |
+| `/.proxy/myDomain` | `GET` | Returns the caller's domain: `{"domain":"example.com"}`. Resolved from the `domain` claim in userinfo if present, otherwise extracted from the domain part of the email claim |
