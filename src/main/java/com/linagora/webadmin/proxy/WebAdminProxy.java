@@ -25,6 +25,8 @@ import jakarta.inject.Singleton;
 import org.apache.james.lifecycle.api.Startable;
 import org.apache.james.metrics.api.Metric;
 import org.apache.james.metrics.api.MetricFactory;
+import org.apache.james.util.MDCBuilder;
+import org.apache.james.util.ReactorUtils;
 import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,15 +129,17 @@ public class WebAdminProxy implements Startable {
             .flatMap(payload -> tokenCache.resolve(token)
                 .flatMap(auth -> auth.checkUserAuthorized()
                     .then(checkUrlAccess(auth, request))
-                    .then(dispatchToBackend(request, response, payload, auth)))
-                .onErrorResume(AccessForbiddenException.class, e -> {
-                    LOGGER.info("Access forbidden", e);
-                    return response.status(403).send().then();
-                })
-                .onErrorResume(OidcAuthenticationException.class, e -> {
-                    LOGGER.info("Authentication rejected", e);
-                    return response.status(401).send().then();
-                }));
+                    .then(dispatchToBackend(request, response, payload, auth))
+                    .contextWrite(ReactorUtils.context("request",
+                        MDCBuilder.create()
+                            .addToContext(MDCBuilder.USER, auth.user())
+                            .addToContext("clientId", auth.clientId()))))
+                .onErrorResume(AccessForbiddenException.class, e ->
+                    ReactorUtils.logAsMono(() -> LOGGER.info("Access forbidden", e))
+                        .then(response.status(403).send().then()))
+                .onErrorResume(OidcAuthenticationException.class, e ->
+                    ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
+                        .then(response.status(401).send().then())));
     }
 
     private void addCorsHeaders(HttpServerRequest request, HttpServerResponse response) {
@@ -203,12 +207,12 @@ public class WebAdminProxy implements Startable {
 
     private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,
                                           byte[] payload, AuthenticatedRequest auth) {
-        LOGGER.debug("Proxying request: method={}, endpoint={}, clientId={}, user={}",
-            request.method().name(), request.uri(), auth.clientId(), auth.user());
         requestsMetric.increment();
         HttpClient backendClient = backendClients.get(auth.clientId());
         String webadminToken = auth.clientConfiguration().webadminToken();
-        return Mono.from(backendClient
+        return ReactorUtils.logAsMono(() -> LOGGER.info("Proxying request: method={}, endpoint={}",
+                request.method().name(), request.uri()))
+            .then(Mono.from(backendClient
             .headers(outgoing -> {
                 request.requestHeaders().forEach(entry -> {
                     if (RESERVED_HEADERS.stream().noneMatch(h -> h.equalsIgnoreCase(entry.getKey()))) {
@@ -220,7 +224,7 @@ public class WebAdminProxy implements Startable {
             .request(request.method())
             .uri(request.uri())
             .send((req, out) -> out.sendByteArray(Mono.just(payload)))
-            .response((res, body) -> writeBackendResponse(response, res, body)))
+            .response((res, body) -> writeBackendResponse(response, res, body))))
         .then();
     }
 
