@@ -1606,6 +1606,28 @@ class WebAdminProxyIntegrationTest {
                     .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
         }
 
+        private void stubValidTokenWithSidInUserinfoOnly() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"sid\":\"" + SESSION_ID + "\"}"));
+        }
+
+        private void stubValidTokenWithSidInBoth() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\",\"sid\":\"" + SESSION_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"sid\":\"other-sid\"}"));
+        }
+
         /** Builds a minimal unsigned JWT: header.payload. */
         static String buildLogoutToken(String sid) {
             String header = Base64.getUrlEncoder().withoutPadding()
@@ -1727,6 +1749,80 @@ class WebAdminProxyIntegrationTest {
                 .body("logout_token=" + token)
             .when().post("/backchannel-logout")
             .then().statusCode(400);
+        }
+
+        @Test
+        void shouldInvalidateCachedTokenWhenSidComesFromUserinfo() throws Exception {
+            stubValidTokenWithSidInUserinfoOnly();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // Warm up the cache — sid comes from userinfo
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+
+            // Backchannel logout using the sid from userinfo
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken(SESSION_ID))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            // Next request must re-validate with OIDC
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
+        }
+
+        @Test
+        void shouldPreferIntrospectSidOverUserinfoSidWhenBothPresent() throws Exception {
+            stubValidTokenWithSidInBoth();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // Warm up the cache — introspect sid takes precedence
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+
+            // Logout using userinfo sid (other-sid) must NOT invalidate the session
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken("other-sid"))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            // Cache still intact — no new OIDC call
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+
+            // Logout using introspect sid (SESSION_ID) must invalidate
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken(SESSION_ID))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
         }
     }
 
