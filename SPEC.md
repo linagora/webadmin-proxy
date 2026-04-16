@@ -458,3 +458,37 @@ Both endpoints require a valid Bearer token and apply the same `authorized.users
 Allow Twake Mail functional admin frontend to auto-populate user context (current user identity, managed domain) without requiring the frontend to parse or introspect OIDC tokens.
 
 Definition of done: Write IT tests.
+
+### Step 11: Inline deny rules in allowed.urls
+
+Extend `allowed.urls` to support a `"denied": true` flag on any rule. Rules are evaluated **in order**; the first matching rule wins. A matching denied rule returns 403 immediately.
+
+This allows compact configs where a broad wildcard covers most paths and a few explicit deny rules carve out exceptions, without introducing a separate `denied.urls` list.
+
+#### Syntax
+
+```json
+"allowed.urls": [
+  {"denied": true, "endpoint": "/domains/{domain}/quota"},
+  {"denied": true, "verb": ["DELETE"], "endpoint": "/domains/{domain}/aliases"},
+  {"endpoint": "/domains/{domain}/*"}
+]
+```
+
+- `denied` is optional, defaults to `false`
+- `verb` is optional on deny rules, same as on allow rules — omitting it matches all verbs
+- Order is significant: place deny rules before the broader allow rules they override
+
+#### Semantics
+
+| First matching rule | Outcome |
+|---------------------|---------|
+| `denied: true` | 403 Forbidden |
+| `denied: false` (or absent) | request allowed, pattern variables passed to `url.patterns.restrictions` |
+| No match | 403 Forbidden (same as before) |
+
+#### `/.proxy/allowed/urls` response
+
+Deny rules are included in the response with `"denied": true` so that frontends can reflect the full ACL. Rules without the flag omit the `denied` key entirely.
+
+Definition of done: Write IT tests.

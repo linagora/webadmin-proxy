@@ -434,6 +434,54 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class DeniedFlag {
+
+        @Test
+        void defaultConstructorShouldNotBeDenied() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains");
+            assertThat(rule.isDenied()).isFalse();
+        }
+
+        @Test
+        void explicitFalseShouldNotBeDenied() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains", false);
+            assertThat(rule.isDenied()).isFalse();
+        }
+
+        @Test
+        void explicitTrueShouldBeDenied() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains", true);
+            assertThat(rule.isDenied()).isTrue();
+        }
+
+        @Test
+        void deniedRuleStillMatchesVerbAndPath() {
+            AllowedUrl rule = new AllowedUrl(List.of("DELETE"), "/domains/{domain}", true);
+            assertThat(rule.match("DELETE", "/domains/example.com")).isPresent();
+        }
+
+        @Test
+        void deniedRuleDoesNotMatchWrongVerb() {
+            AllowedUrl rule = new AllowedUrl(List.of("DELETE"), "/domains/{domain}", true);
+            assertThat(rule.match("GET", "/domains/example.com")).isEmpty();
+        }
+
+        @Test
+        void deniedRuleWithNoVerbMatchesAllVerbs() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}", true);
+            assertThat(rule.match("GET", "/domains/example.com")).isPresent();
+            assertThat(rule.match("DELETE", "/domains/example.com")).isPresent();
+            assertThat(rule.match("POST", "/domains/example.com")).isPresent();
+        }
+
+        @Test
+        void deniedRuleDoesNotMatchDifferentPath() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true);
+            assertThat(rule.match("GET", "/domains/example.com/aliases")).isEmpty();
+        }
+    }
+
+    @Nested
     class OperatorTests {
 
         @Test

@@ -27,13 +27,19 @@ public class AllowedUrl {
 
     private final List<String> verbs;
     private final String endpointPattern;
+    private final boolean denied;
     private final Pattern compiledPathPattern;
     private final List<String> pathVariableNames;
     private final Map<String, String> queryParamPatterns;
 
     public AllowedUrl(List<String> verbs, String endpointPattern) {
+        this(verbs, endpointPattern, false);
+    }
+
+    public AllowedUrl(List<String> verbs, String endpointPattern, boolean denied) {
         this.verbs = List.copyOf(verbs);
         this.endpointPattern = endpointPattern;
+        this.denied = denied;
 
         int queryIdx = endpointPattern.indexOf('?');
         String pathPart = queryIdx >= 0 ? endpointPattern.substring(0, queryIdx) : endpointPattern;
@@ -51,6 +57,10 @@ public class AllowedUrl {
 
     public String endpointPattern() {
         return endpointPattern;
+    }
+
+    public boolean isDenied() {
+        return denied;
     }
 
     /**

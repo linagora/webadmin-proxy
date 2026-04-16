@@ -25,6 +25,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
       },
       "authorized.users": ["alice@example.com", "bob@example.com"],
       "allowed.urls": [
+        {"denied": true, "endpoint": "/domains/{domain}/quota"},
         {"verb": ["GET"], "endpoint": "/domains/{domain}/users"},
         {"endpoint": "/domains/{domain}/aliases/*"}
       ],
@@ -65,17 +66,30 @@ Each entry under `clients` is keyed by the OIDC `client_id` value that clients p
 | `webadmin.token` | yes | Bearer token used to authenticate requests to the backend |
 | `expected.claims` | no | Map of claim name → required value. All listed claims must be present in userinfo with exactly the specified value |
 | `authorized.users` | no | Allowlist of user identities (as resolved by `oidc.claim.authenticated.user`). If non-empty, only listed users are admitted. Useful when OIDC claim configuration is impractical |
-| `allowed.urls` | no | List of allowed endpoint rules. If omitted or empty, all URLs are allowed |
+| `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins |
 | `url.patterns.restrictions` | no | Constraints on URL template variables, validated against OIDC claims |
 
 ### allowed.urls rules
+
+Rules are evaluated **in order** — the first rule whose `endpoint` pattern and `verb` list match the incoming request determines the outcome. A matching `denied: true` rule returns 403 immediately; a matching rule without it (or with `denied: false`) allows the request through.
+
+This makes it easy to carve out exceptions from a broad wildcard without enumerating every permitted path:
+
+```json
+"allowed.urls": [
+  {"denied": true, "endpoint": "/domains/{domain}/quota"},
+  {"denied": true, "verbs": ["DELETE"], "endpoint": "/domains/{domain}/aliases"},
+  {"endpoint": "/domains/{domain}/*"}
+]
+```
 
 Each rule has:
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `endpoint` | yes | Endpoint pattern (see pattern syntax below) |
-| `verb` | no | List of allowed HTTP verbs (e.g. `["GET", "PUT"]`). If omitted, all verbs are allowed |
+| `verb` | no | List of HTTP verbs this rule applies to (e.g. `["GET", "PUT"]`). If omitted, the rule matches all verbs |
+| `denied` | no | `true` to explicitly deny matching requests with 403. Defaults to `false` |
 
 ### Endpoint pattern syntax
 

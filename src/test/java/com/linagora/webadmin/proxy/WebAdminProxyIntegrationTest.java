@@ -21,6 +21,8 @@ import static org.mockserver.model.MediaType.APPLICATION_JSON;
 
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 import java.util.List;
@@ -846,6 +848,199 @@ class WebAdminProxyIntegrationTest {
             given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
                 .when().get("/anything")
+                .then().statusCode(200);
+        }
+    }
+
+    @Nested
+    class DeniedRules {
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        private void startProxyWith(List<AllowedUrl> allowedUrls) throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), List.of()));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration).clients(clients).build();
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            proxyServer.start();
+        }
+
+        private void stubValidToken() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        }
+
+        @Test
+        void deniedRuleAloneShouldReturn403() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true)));
+            stubValidToken();
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/forbidden")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void deniedRuleBeforeWildcardShouldReturn403() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true),
+                new AllowedUrl(List.of(), "/domains/{domain}/*")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/aliases"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/forbidden")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void wildcardAfterDeniedRuleShouldAllowOtherPaths() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true),
+                new AllowedUrl(List.of(), "/domains/{domain}/*")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/aliases"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/aliases")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void allowedRuleBeforeDeniedShouldAllow() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of(), "/domains/{domain}/*"),
+                new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true)));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/forbidden"))
+                .respond(response().withStatusCode(200).withBody("ok"));
+
+            // allow rule comes first → first match wins → 200
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/forbidden")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void deniedRuleWithVerbShouldOnlyDenyThatVerb() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of("DELETE"), "/domains/{domain}/protected", true),
+                new AllowedUrl(List.of(), "/domains/{domain}/*")));
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/protected"))
+                .respond(response().withStatusCode(200).withBody("ok"));
+
+            // DELETE is denied
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().delete("/domains/example.com/protected")
+                .then().statusCode(403);
+
+            // GET falls through to the wildcard allow rule
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/protected")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void noMatchShouldReturn403WhenDeniedRulesOnly() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true)));
+            stubValidToken();
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/other")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void deniedRuleFromConfigFileShouldReturn403() throws Exception {
+            // Verify that "denied": true is correctly parsed from JSON config
+            int oidcPort = oidcMockServer.getLocalPort();
+            int backendPort = backendMockServer.getLocalPort();
+            String config = """
+                {
+                  "port": "0",
+                  "oidc.userInfo.url": "http://localhost:%d/userinfo",
+                  "oidc.introspect.url": "http://localhost:%d/introspect",
+                  "oidc.audience": "%s",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": {
+                    "%s": {
+                      "webadmin.backend": "http://localhost:%d",
+                      "webadmin.token": "%s",
+                      "allowed.urls": [
+                        {"denied": true, "endpoint": "/domains/{domain}/quota"},
+                        {"endpoint": "/domains/{domain}/*"}
+                      ]
+                    }
+                  }
+                }
+                """.formatted(oidcPort, oidcPort, AUDIENCE, CLIENT_ID, backendPort, WEBADMIN_TOKEN);
+            Path configFile = Files.createTempFile("proxy-config", ".json");
+            Files.writeString(configFile, config);
+            WebAdminProxyConfiguration parsedConfig = WebAdminProxyConfiguration.from(configFile.toFile());
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(parsedConfig));
+            proxyServer.start();
+
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains/example.com/aliases"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            // denied endpoint → 403
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/quota")
+                .then().statusCode(403);
+
+            // other path under wildcard → 200
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/example.com/aliases")
                 .then().statusCode(200);
         }
     }
@@ -2079,6 +2274,52 @@ class WebAdminProxyIntegrationTest {
                 .get("/.proxy/allowed/urls");
 
             assertThat(response.statusCode()).isEqualTo(200);
+        }
+
+        @Test
+        void shouldIncludeDeniedFlagWhenSet() throws Exception {
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(
+                        new AllowedUrl(List.of(), "/domains/{domain}/quota", true),
+                        new AllowedUrl(List.of(), "/domains/{domain}/*")),
+                    Map.of(), List.of()));
+            WebAdminProxyGuiceServer server = startProxy(clients);
+            try {
+                Response response = given()
+                    .port(server.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when()
+                    .get("/.proxy/allowed/urls");
+
+                assertThat(response.statusCode()).isEqualTo(200);
+                String body = response.body().asString();
+                assertThat(body).contains("\"denied\":true");
+                assertThat(body).contains("/domains/{domain}/quota");
+            } finally {
+                server.stop();
+            }
+        }
+
+        @Test
+        void shouldOmitDeniedFlagWhenFalse() throws Exception {
+            Map<String, ClientConfiguration> clients = Map.of(
+                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
+                    Map.of(), List.of(new AllowedUrl(List.of(), "/domains/{domain}/*")),
+                    Map.of(), List.of()));
+            WebAdminProxyGuiceServer server = startProxy(clients);
+            try {
+                Response response = given()
+                    .port(server.getPort())
+                    .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when()
+                    .get("/.proxy/allowed/urls");
+
+                assertThat(response.statusCode()).isEqualTo(200);
+                assertThat(response.body().asString()).doesNotContain("denied");
+            } finally {
+                server.stop();
+            }
         }
     }
 

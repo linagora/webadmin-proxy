@@ -169,14 +169,20 @@ public class WebAdminProxy implements Startable {
         }
         String uri = request.uri();
         String method = request.method().name();
-        Optional<Map<String, String>> capturedVars = allowedUrls.stream()
-            .flatMap(rule -> rule.match(method, uri).stream())
+        Optional<AllowedUrl> firstMatch = allowedUrls.stream()
+            .filter(rule -> rule.match(method, uri).isPresent())
             .findFirst();
-        if (capturedVars.isEmpty()) {
+        if (firstMatch.isEmpty()) {
             return Mono.error(new AccessForbiddenException(
                 "URL not allowed for client '" + auth.clientId() + "': " + method + " " + uri));
         }
-        return validatePatternRestrictions(auth, capturedVars.get());
+        AllowedUrl matchedRule = firstMatch.get();
+        if (matchedRule.isDenied()) {
+            return Mono.error(new AccessForbiddenException(
+                "URL explicitly denied for client '" + auth.clientId() + "': " + method + " " + uri));
+        }
+        Map<String, String> capturedVars = matchedRule.match(method, uri).get();
+        return validatePatternRestrictions(auth, capturedVars);
     }
 
     private Mono<Void> validatePatternRestrictions(AuthenticatedRequest auth, Map<String, String> capturedVars) {

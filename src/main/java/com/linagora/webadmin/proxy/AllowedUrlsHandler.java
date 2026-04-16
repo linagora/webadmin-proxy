@@ -64,6 +64,9 @@ public class AllowedUrlsHandler {
             ArrayNode array = MAPPER.createArrayNode();
             for (AllowedUrl url : allowedUrls) {
                 ObjectNode node = MAPPER.createObjectNode();
+                if (url.isDenied()) {
+                    node.put("denied", true);
+                }
                 if (!url.verbs().isEmpty()) {
                     ArrayNode verbsNode = node.putArray("verb");
                     url.verbs().forEach(verbsNode::add);

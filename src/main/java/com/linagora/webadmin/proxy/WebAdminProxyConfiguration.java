@@ -139,7 +139,10 @@ public record WebAdminProxyConfiguration(int port,
                     if (verbsNode != null) {
                         verbsNode.forEach(v -> verbs.add(v.asText()));
                     }
-                    allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText()));
+                    boolean denied = Optional.ofNullable(urlNode.get("denied"))
+                        .map(JsonNode::asBoolean)
+                        .orElse(false);
+                    allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied));
                 }
             }
             Map<String, UrlPatternRestriction> urlPatternRestrictions = new HashMap<>();
