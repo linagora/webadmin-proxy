@@ -25,12 +25,14 @@ import java.util.regex.Pattern;
 
 public class AllowedUrl {
 
+    private record CompiledQueryParam(Pattern pattern, List<String> variableNames) {}
+
     private final List<String> verbs;
     private final String endpointPattern;
     private final boolean denied;
     private final Pattern compiledPathPattern;
     private final List<String> pathVariableNames;
-    private final Map<String, String> queryParamPatterns;
+    private final Map<String, CompiledQueryParam> compiledQueryParams;
 
     public AllowedUrl(List<String> verbs, String endpointPattern) {
         this(verbs, endpointPattern, false);
@@ -48,7 +50,7 @@ public class AllowedUrl {
         List<String> names = new ArrayList<>();
         this.compiledPathPattern = Pattern.compile(toPathRegex(pathPart, names));
         this.pathVariableNames = List.copyOf(names);
-        this.queryParamPatterns = parseQueryPattern(queryPart);
+        this.compiledQueryParams = parseQueryPattern(queryPart);
     }
 
     public List<String> verbs() {
@@ -88,22 +90,24 @@ public class AllowedUrl {
         }
 
         Map<String, String> requestParams = parseQueryString(queryString);
-        for (Map.Entry<String, String> entry : queryParamPatterns.entrySet()) {
+        for (Map.Entry<String, CompiledQueryParam> entry : compiledQueryParams.entrySet()) {
             String paramName = entry.getKey();
-            String paramPattern = entry.getValue();
+            CompiledQueryParam cqp = entry.getValue();
             String requestValue = requestParams.get(paramName);
             if (requestValue == null) {
                 return Optional.empty();
             }
-            if (paramPattern.startsWith("{") && paramPattern.endsWith("}")) {
-                String varName = paramPattern.substring(1, paramPattern.length() - 1);
+            Matcher qm = cqp.pattern().matcher(requestValue);
+            if (!qm.matches()) {
+                return Optional.empty();
+            }
+            for (String varName : cqp.variableNames()) {
+                String groupValue = qm.group(varName);
                 String existing = captured.get(varName);
-                if (existing != null && !existing.equals(requestValue)) {
+                if (existing != null && !existing.equals(groupValue)) {
                     return Optional.empty();
                 }
-                captured.put(varName, requestValue);
-            } else if (!paramPattern.equals(requestValue)) {
-                return Optional.empty();
+                captured.put(varName, groupValue);
             }
         }
 
@@ -114,15 +118,19 @@ public class AllowedUrl {
         return match(method, fullUri).isPresent();
     }
 
-    private static Map<String, String> parseQueryPattern(String queryPart) {
+    private static Map<String, CompiledQueryParam> parseQueryPattern(String queryPart) {
         if (queryPart.isEmpty()) {
             return Map.of();
         }
-        Map<String, String> result = new HashMap<>();
+        Map<String, CompiledQueryParam> result = new HashMap<>();
         for (String param : queryPart.split("&")) {
             int eq = param.indexOf('=');
             if (eq >= 0) {
-                result.put(param.substring(0, eq), param.substring(eq + 1));
+                String paramName = param.substring(0, eq);
+                String valuePattern = param.substring(eq + 1);
+                List<String> varNames = new ArrayList<>();
+                Pattern compiled = Pattern.compile(toPathRegex(valuePattern, varNames));
+                result.put(paramName, new CompiledQueryParam(compiled, List.copyOf(varNames)));
             }
         }
         return Map.copyOf(result);
