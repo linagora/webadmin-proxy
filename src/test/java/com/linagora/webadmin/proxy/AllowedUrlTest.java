@@ -434,6 +434,37 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class EmailQueryParamMatching {
+
+        @Test
+        void percentAtDomainInQueryParamShouldMatchEmailValue() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            assertThat(rule.matches("DELETE", "/messages?user=btellier@linagora.com")).isTrue();
+        }
+
+        @Test
+        void percentAtDomainInQueryParamShouldCapturesDomain() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            Optional<Map<String, String>> result = rule.match("DELETE", "/messages?user=btellier@linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "linagora.com");
+        }
+
+        @Test
+        void percentAtDomainInQueryParamShouldMatchWithExtraParams() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            assertThat(rule.matches("DELETE",
+                "/messages?olderThan=1d&mailbox=Trash&user=btellier@linagora.com&useSavedDate=")).isTrue();
+        }
+
+        @Test
+        void percentAtDomainInQueryParamShouldNotMatchBareUsername() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            assertThat(rule.matches("DELETE", "/messages?user=btellier")).isFalse();
+        }
+    }
+
+    @Nested
     class DeniedFlag {
 
         @Test
