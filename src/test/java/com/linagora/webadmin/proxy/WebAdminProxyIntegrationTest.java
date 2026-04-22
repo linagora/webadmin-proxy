@@ -1009,16 +1009,18 @@ class WebAdminProxyIntegrationTest {
                   "oidc.audience": "%s",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "%s": {
-                      "webadmin.backend": "http://localhost:%d",
-                      "webadmin.token": "%s",
-                      "allowed.urls": [
-                        {"denied": true, "endpoint": "/domains/{domain}/quota"},
-                        {"endpoint": "/domains/{domain}/*"}
-                      ]
+                  "clients": [
+                    {
+                      "%s": {
+                        "webadmin.backend": "http://localhost:%d",
+                        "webadmin.token": "%s",
+                        "allowed.urls": [
+                          {"denied": true, "endpoint": "/domains/{domain}/quota"},
+                          {"endpoint": "/domains/{domain}/*"}
+                        ]
+                      }
                     }
-                  }
+                  ]
                 }
                 """.formatted(oidcPort, oidcPort, AUDIENCE, CLIENT_ID, backendPort, WEBADMIN_TOKEN);
             Path configFile = Files.createTempFile("proxy-config", ".json");
@@ -2718,6 +2720,220 @@ class WebAdminProxyIntegrationTest {
             .then()
                 .statusCode(204)
                 .header("Access-Control-Allow-Origin", "https://app.example.com");
+        }
+    }
+
+    @Nested
+    class DuplicateClientId {
+
+        private static final String ALICE = "alice@example.com";
+        private static final String BOB = "bob@example.com";
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer1;
+        private ClientAndServer backendMockServer2;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock1;
+        private MockServerClient backendMock2;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer1 = ClientAndServer.startClientAndServer(0);
+            backendMockServer2 = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock1 = new MockServerClient("localhost", backendMockServer1.getLocalPort());
+            backendMock2 = new MockServerClient("localhost", backendMockServer2.getLocalPort());
+        }
+
+        @AfterEach
+        void tearDown() {
+            if (proxyServer != null) proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer1.stop();
+            backendMockServer2.stop();
+        }
+
+        private WebAdminProxyGuiceServer startProxy(WebAdminProxyConfiguration config) {
+            WebAdminProxyGuiceServer server = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+            server.start();
+            return server;
+        }
+
+        private WebAdminProxyConfiguration buildConfigWithAuthorizedUsers() throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
+            return WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of(ALICE)))
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of(BOB)))
+                .build();
+        }
+
+        private WebAdminProxyConfiguration buildConfigWithExpectedClaims() throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
+            return WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of("role", "admin"), List.of(), Map.of(), List.of()))
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of("role", "user"), List.of(), Map.of(), List.of()))
+                .build();
+        }
+
+        private void stubIntrospect(String userEmail) {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + userEmail + "\"}"));
+        }
+
+        private void stubIntrospectWithClaim(String userEmail, String role) {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + userEmail + "\",\"role\":\"" + role + "\"}"));
+        }
+
+        @Test
+        void shouldRouteAliceToFirstEntry() throws Exception {
+            proxyServer = startProxy(buildConfigWithAuthorizedUsers());
+            stubIntrospect(ALICE);
+            backendMock1.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+
+            backendMock1.verify(request().withPath("/domains"), VerificationTimes.once());
+            backendMock2.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
+        }
+
+        @Test
+        void shouldRouteBobToSecondEntry() throws Exception {
+            proxyServer = startProxy(buildConfigWithAuthorizedUsers());
+            stubIntrospect(BOB);
+            backendMock2.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+
+            backendMock1.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
+            backendMock2.verify(request().withPath("/domains"), VerificationTimes.once());
+        }
+
+        @Test
+        void shouldReturn403WhenNoEntryMatchesUser() throws Exception {
+            proxyServer = startProxy(buildConfigWithAuthorizedUsers());
+            stubIntrospect("charlie@example.com");
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+
+        @Test
+        void shouldRouteToFirstEntryWhenClaimMatchesIt() throws Exception {
+            proxyServer = startProxy(buildConfigWithExpectedClaims());
+            stubIntrospectWithClaim(USER_EMAIL, "admin");
+            backendMock1.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+
+            backendMock1.verify(request().withPath("/domains"), VerificationTimes.once());
+            backendMock2.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
+        }
+
+        @Test
+        void shouldRouteToSecondEntryWhenClaimMatchesIt() throws Exception {
+            proxyServer = startProxy(buildConfigWithExpectedClaims());
+            stubIntrospectWithClaim(USER_EMAIL, "user");
+            backendMock2.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+
+            backendMock1.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
+            backendMock2.verify(request().withPath("/domains"), VerificationTimes.once());
+        }
+
+        @Test
+        void shouldReturn403WhenNoEntryMatchesClaims() throws Exception {
+            proxyServer = startProxy(buildConfigWithExpectedClaims());
+            stubIntrospect(USER_EMAIL);
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(403);
+        }
+
+        @Test
+        void shouldPickFirstApplicableEntryWhenBothMatch() throws Exception {
+            int oidcPort = oidcMockServer.getLocalPort();
+            URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+            URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+            IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+            OidcConfiguration oidcConfiguration = new OidcConfiguration(
+                userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(oidcConfiguration)
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()))
+                .addClient(CLIENT_ID, new ClientConfiguration(
+                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
+                    Map.of(), List.of(), Map.of(), List.of()))
+                .build();
+            proxyServer = startProxy(config);
+            stubIntrospect(USER_EMAIL);
+            backendMock1.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when().get("/domains")
+            .then().statusCode(200);
+
+            backendMock1.verify(request().withPath("/domains"), VerificationTimes.once());
+            backendMock2.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
         }
     }
 }

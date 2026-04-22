@@ -69,10 +69,11 @@ public class WebAdminProxy implements Startable {
         this.allowedUrlsHandler = allowedUrlsHandler;
         this.proxyInfoHandler = proxyInfoHandler;
         this.requestsMetric = metricFactory.generate("webadmin.proxy.requests");
-        this.backendClients = configuration.clients().entrySet().stream()
+        this.backendClients = configuration.clients().stream()
             .collect(Collectors.toMap(
-                Map.Entry::getKey,
-                entry -> HttpClient.create().baseUrl(entry.getValue().webadminBackend())));
+                e -> e.getValue().webadminBackend(),
+                e -> HttpClient.create().baseUrl(e.getValue().webadminBackend()),
+                (a, b) -> a));
     }
 
     public void start() {
@@ -214,7 +215,7 @@ public class WebAdminProxy implements Startable {
     private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,
                                           byte[] payload, AuthenticatedRequest auth) {
         requestsMetric.increment();
-        HttpClient backendClient = backendClients.get(auth.clientId());
+        HttpClient backendClient = backendClients.get(auth.clientConfiguration().webadminBackend());
         String webadminToken = auth.clientConfiguration().webadminToken();
         return ReactorUtils.logAsMono(() -> LOGGER.info("Proxying request: method={}, endpoint={}",
                 request.method().name(), request.uri()))

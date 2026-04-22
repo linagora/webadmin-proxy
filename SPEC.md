@@ -492,3 +492,61 @@ This allows compact configs where a broad wildcard covers most paths and a few e
 Deny rules are included in the response with `"denied": true` so that frontends can reflect the full ACL. Rules without the flag omit the `denied` key entirely.
 
 Definition of done: Write IT tests.
+
+### Step 12: Clients as an ordered array with duplicate client_id support
+
+Change the `clients` configuration field from a JSON object (unique keys) to a JSON array of single-key objects. This allows the same `client_id` to appear more than once, each entry carrying different `authorized.users`, `expected.claims`, backend, or URL restriction configuration.
+
+#### Motivation
+
+A single OIDC client can represent users with different permission levels. For example, support staff, regular admin and Privacy Officers may share the same OIDC client but require different backend routing and URL access controls. Duplicating the `client_id` key in an object is not valid JSON; an ordered array is the correct representation.
+
+#### Configuration format
+
+Before (unique keys, one entry per client_id):
+
+```json
+"clients": {
+  "twakemail-client": {
+    "webadmin.backend": "http://james-a:8000",
+    "webadmin.token": "token-a"
+  }
+}
+```
+
+After (array of single-key objects, duplicate keys allowed):
+
+```json
+"clients": [
+  {
+    "twakemail-client": {
+      "webadmin.backend": "http://james-a:8000",
+      "webadmin.token": "token-a",
+      "authorized.users": ["alice@example.com"]
+    }
+  },
+  {
+    "twakemail-client": {
+      "webadmin.backend": "http://james-b:8000",
+      "webadmin.token": "token-b",
+      "authorized.users": ["bob@example.com"]
+    }
+  }
+]
+```
+
+#### Selection semantics
+
+For a given token, the proxy:
+
+1. Extracts `client_id` from the introspect response.
+2. Iterates the `clients` array in order.
+3. Picks the **first entry** whose key matches the `client_id` AND for which **both** `authorized.users` and `expected.claims` match the authenticated user.
+4. If no entry matches → 403 Forbidden.
+
+#### Definition of done: Write IT tests covering
+
+- A token for user A routes to entry 1; a token for user B routes to entry 2.
+- A token whose user matches no entry returns 403.
+- When both `authorized.users` and `expected.claims` are used as criteria, only entries satisfying both are selected.
+- When multiple entries match, the first one in the array wins.

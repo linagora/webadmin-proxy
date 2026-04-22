@@ -46,12 +46,14 @@ class WebAdminProxyConfigurationTest {
           "oidc.audience": "webadmin-proxy",
           "oidc.claim.authenticated.user": "email",
           "oidc.token.cache.expiration": "60s",
-          "clients": {
-            "my-client": {
-              "webadmin.backend": "http://james:8000",
-              "webadmin.token": "secret"
+          "clients": [
+            {
+              "my-client": {
+                "webadmin.backend": "http://james:8000",
+                "webadmin.token": "secret"
+              }
             }
-          }
+          ]
         }
         """;
 
@@ -94,7 +96,7 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": ["aud-a", "aud-b"],
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                  "clients": [ { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } } ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
@@ -111,7 +113,7 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": ["webadmin-proxy"],
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                  "clients": [ { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } } ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
@@ -141,7 +143,7 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                  "clients": [ { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } } ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
@@ -193,7 +195,7 @@ class WebAdminProxyConfigurationTest {
         @Test
         void shouldParseClientBackendAndToken() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            ClientConfiguration client = config.clients().get("my-client");
+            ClientConfiguration client = config.clientsForId("my-client").get(0);
             assertThat(client.webadminBackend()).isEqualTo("http://james:8000");
             assertThat(client.webadminToken()).isEqualTo("secret");
         }
@@ -208,22 +210,47 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "client-a": { "webadmin.backend": "http://james-a:8000", "webadmin.token": "token-a" },
-                    "client-b": { "webadmin.backend": "http://james-b:8000", "webadmin.token": "token-b" }
-                  }
+                  "clients": [
+                    { "client-a": { "webadmin.backend": "http://james-a:8000", "webadmin.token": "token-a" } },
+                    { "client-b": { "webadmin.backend": "http://james-b:8000", "webadmin.token": "token-b" } }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients()).containsKeys("client-a", "client-b");
-            assertThat(config.clients().get("client-a").webadminBackend()).isEqualTo("http://james-a:8000");
-            assertThat(config.clients().get("client-b").webadminBackend()).isEqualTo("http://james-b:8000");
+            assertThat(config.clientsForId("client-a")).hasSize(1);
+            assertThat(config.clientsForId("client-b")).hasSize(1);
+            assertThat(config.clientsForId("client-a").get(0).webadminBackend()).isEqualTo("http://james-a:8000");
+            assertThat(config.clientsForId("client-b").get(0).webadminBackend()).isEqualTo("http://james-b:8000");
+        }
+
+        @Test
+        void shouldParseDuplicateClientId() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    { "my-client": { "webadmin.backend": "http://james-a:8000", "webadmin.token": "token-a",
+                                     "authorized.users": ["alice@example.com"] } },
+                    { "my-client": { "webadmin.backend": "http://james-b:8000", "webadmin.token": "token-b",
+                                     "authorized.users": ["bob@example.com"] } }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.clientsForId("my-client")).hasSize(2);
+            assertThat(config.clientsForId("my-client").get(0).webadminBackend()).isEqualTo("http://james-a:8000");
+            assertThat(config.clientsForId("my-client").get(1).webadminBackend()).isEqualTo("http://james-b:8000");
         }
 
         @Test
         void expectedClaimsShouldBeEmptyWhenAbsent() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            assertThat(config.clients().get("my-client").expectedClaims()).isEmpty();
+            assertThat(config.clientsForId("my-client").get(0).expectedClaims()).isEmpty();
         }
 
         @Test
@@ -236,17 +263,19 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "expected.claims": { "admin": "1", "role": "superadmin" }
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "expected.claims": { "admin": "1", "role": "superadmin" }
+                      }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients().get("my-client").expectedClaims())
+            assertThat(config.clientsForId("my-client").get(0).expectedClaims())
                 .containsEntry("admin", "1")
                 .containsEntry("role", "superadmin");
         }
@@ -254,7 +283,7 @@ class WebAdminProxyConfigurationTest {
         @Test
         void authorizedUsersShouldBeEmptyWhenAbsent() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            assertThat(config.clients().get("my-client").authorizedUsers()).isEmpty();
+            assertThat(config.clientsForId("my-client").get(0).authorizedUsers()).isEmpty();
         }
 
         @Test
@@ -267,17 +296,19 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "authorized.users": ["alice@example.com", "bob@example.com"]
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "authorized.users": ["alice@example.com", "bob@example.com"]
+                      }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients().get("my-client").authorizedUsers())
+            assertThat(config.clientsForId("my-client").get(0).authorizedUsers())
                 .containsExactlyInAnyOrder("alice@example.com", "bob@example.com");
         }
     }
@@ -288,7 +319,7 @@ class WebAdminProxyConfigurationTest {
         @Test
         void allowedUrlsShouldBeEmptyWhenAbsent() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            assertThat(config.clients().get("my-client").allowedUrls()).isEmpty();
+            assertThat(config.clientsForId("my-client").get(0).allowedUrls()).isEmpty();
         }
 
         @Test
@@ -301,19 +332,21 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "allowed.urls": [
-                        { "endpoint": "/domains/{domain}/users" }
-                      ]
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          { "endpoint": "/domains/{domain}/users" }
+                        ]
+                      }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients().get("my-client").allowedUrls())
+            assertThat(config.clientsForId("my-client").get(0).allowedUrls())
                 .hasSize(1)
                 .first()
                 .satisfies(rule -> {
@@ -332,19 +365,21 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "allowed.urls": [
-                        { "verb": ["GET", "PUT"], "endpoint": "/users" }
-                      ]
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          { "verb": ["GET", "PUT"], "endpoint": "/users" }
+                        ]
+                      }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients().get("my-client").allowedUrls().get(0).verbs())
+            assertThat(config.clientsForId("my-client").get(0).allowedUrls().get(0).verbs())
                 .containsExactlyInAnyOrder("GET", "PUT");
         }
 
@@ -358,20 +393,22 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "allowed.urls": [
-                        { "verb": ["GET"], "endpoint": "/domains/{domain}/users" },
-                        { "endpoint": "/domains/{domain}/aliases/*" }
-                      ]
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          { "verb": ["GET"], "endpoint": "/domains/{domain}/users" },
+                          { "endpoint": "/domains/{domain}/aliases/*" }
+                        ]
+                      }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            assertThat(config.clients().get("my-client").allowedUrls()).hasSize(2);
+            assertThat(config.clientsForId("my-client").get(0).allowedUrls()).hasSize(2);
         }
     }
 
@@ -381,7 +418,7 @@ class WebAdminProxyConfigurationTest {
         @Test
         void urlPatternRestrictionsShouldBeEmptyWhenAbsent() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
-            assertThat(config.clients().get("my-client").urlPatternRestrictions()).isEmpty();
+            assertThat(config.clientsForId("my-client").get(0).urlPatternRestrictions()).isEmpty();
         }
 
         @Test
@@ -394,19 +431,21 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "url.patterns.restrictions": {
-                        "domain": { "backing.claim": "domain", "operator": "EQUALS" }
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "url.patterns.restrictions": {
+                          "domain": { "backing.claim": "domain", "operator": "EQUALS" }
+                        }
                       }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            UrlPatternRestriction restriction = config.clients().get("my-client").urlPatternRestrictions().get("domain");
+            UrlPatternRestriction restriction = config.clientsForId("my-client").get(0).urlPatternRestrictions().get("domain");
             assertThat(restriction.backingClaim()).isEqualTo("domain");
             assertThat(restriction.operator()).isEqualTo(UrlPatternRestriction.Operator.EQUALS);
         }
@@ -421,19 +460,21 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "webadmin-proxy",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": {
-                    "my-client": {
-                      "webadmin.backend": "http://james:8000",
-                      "webadmin.token": "secret",
-                      "url.patterns.restrictions": {
-                        "domain": { "backing.claim": "email", "operator": "HAS_DOMAIN" }
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "url.patterns.restrictions": {
+                          "domain": { "backing.claim": "email", "operator": "HAS_DOMAIN" }
+                        }
                       }
                     }
-                  }
+                  ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
-            UrlPatternRestriction restriction = config.clients().get("my-client").urlPatternRestrictions().get("domain");
+            UrlPatternRestriction restriction = config.clientsForId("my-client").get(0).urlPatternRestrictions().get("domain");
             assertThat(restriction.backingClaim()).isEqualTo("email");
             assertThat(restriction.operator()).isEqualTo(UrlPatternRestriction.Operator.HAS_DOMAIN);
         }
@@ -454,7 +495,7 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "{ENV:HOME}",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                  "clients": [ { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } } ]
                 }
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
@@ -471,7 +512,7 @@ class WebAdminProxyConfigurationTest {
                   "oidc.audience": "{ENV:THIS_VAR_DOES_NOT_EXIST_XYZ_12345}",
                   "oidc.claim.authenticated.user": "email",
                   "oidc.token.cache.expiration": "60s",
-                  "clients": { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } }
+                  "clients": [ { "c": { "webadmin.backend": "http://james:8000", "webadmin.token": "t" } } ]
                 }
                 """;
             assertThatThrownBy(() -> WebAdminProxyConfiguration.from(writeConfig(json)))
