@@ -35,15 +35,15 @@ public class OidcTokenResolver {
 
     private final DefaultCheckTokenClient checkTokenClient;
     private final OidcConfiguration oidcConfiguration;
-    private final Map<String, ClientConfiguration> clients;
+    private final List<Map.Entry<String, ClientConfiguration>> clients;
 
     @Inject
     public OidcTokenResolver(DefaultCheckTokenClient checkTokenClient,
                               OidcConfiguration oidcConfiguration,
-                              Map<String, ClientConfiguration> clients) {
+                              WebAdminProxyConfiguration configuration) {
         this.checkTokenClient = checkTokenClient;
         this.oidcConfiguration = oidcConfiguration;
-        this.clients = clients;
+        this.clients = configuration.clients();
     }
 
     public Mono<AuthenticatedRequest> resolve(String token) {
@@ -74,26 +74,39 @@ public class OidcTokenResolver {
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing 'client_id' in introspect response (RFC 7662)"));
 
-        ClientConfiguration clientConfiguration = Optional.ofNullable(clients.get(clientId))
-            .orElseThrow(() -> new OidcAuthenticationException("Unknown client_id: " + clientId));
+        List<ClientConfiguration> entriesForClientId = clients.stream()
+            .filter(e -> e.getKey().equals(clientId))
+            .map(Map.Entry::getValue)
+            .toList();
 
-        validateExpectedClaims(clientConfiguration, userInfo);
+        if (entriesForClientId.isEmpty()) {
+            return Mono.error(new OidcAuthenticationException("Unknown client_id: " + clientId));
+        }
+
+        ClientConfiguration clientConfiguration = entriesForClientId.stream()
+            .filter(config -> isUserAuthorized(config, user) && claimsMatch(config, userInfo))
+            .findFirst()
+            .orElseThrow(() -> new AccessForbiddenException(
+                "No applicable configuration for user '" + user + "' with client '" + clientId + "'"));
 
         Optional<String> sessionId = Optional.ofNullable(introspect.json().get("sid")).map(JsonNode::asText)
             .or(() -> userInfo.claimByPropertyName("sid"));
         return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo, sessionId));
     }
 
-    private void validateExpectedClaims(ClientConfiguration clientConfiguration, UserinfoResponse userInfo) {
-        clientConfiguration.expectedClaims().forEach((claimName, expectedValue) -> {
-            String actualValue = userInfo.claimByPropertyName(claimName)
-                .orElseThrow(() -> new AccessForbiddenException(
-                    "Missing required claim '" + claimName + "' in userinfo response"));
-            if (!expectedValue.equals(actualValue)) {
-                throw new AccessForbiddenException(
-                    "Claim '" + claimName + "' value does not match: expected '" + expectedValue + "'");
+    private boolean isUserAuthorized(ClientConfiguration config, String user) {
+        List<String> authorizedUsers = config.authorizedUsers();
+        return authorizedUsers.isEmpty() || authorizedUsers.contains(user);
+    }
+
+    private boolean claimsMatch(ClientConfiguration config, UserinfoResponse userInfo) {
+        for (Map.Entry<String, String> claim : config.expectedClaims().entrySet()) {
+            Optional<String> actual = userInfo.claimByPropertyName(claim.getKey());
+            if (actual.isEmpty() || !claim.getValue().equals(actual.get())) {
+                return false;
             }
-        });
+        }
+        return true;
     }
 
     private boolean audienceMatches(TokenIntrospectionResponse introspect) {

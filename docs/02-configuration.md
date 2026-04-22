@@ -16,27 +16,29 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
   "cors.allow.origin": ["https://twake-mail-admin.linagora.com", "https://twake-calendar-admin.linagora.com"],
   "self.webadmin.enabled": "true",
   "self.webadmin.port": "8002",
-  "clients": {
-    "twakemail-client": {
-      "webadmin.backend": "http://james:8000",
-      "webadmin.token": "{ENV:TWAKEMAIL_WEBADMIN_TOKEN}",
-      "expected.claims": {
-        "admin": "1"
-      },
-      "authorized.users": ["alice@example.com", "bob@example.com"],
-      "allowed.urls": [
-        {"denied": true, "endpoint": "/domains/{domain}/quota"},
-        {"verb": ["GET"], "endpoint": "/domains/{domain}/users"},
-        {"endpoint": "/domains/{domain}/aliases/*"}
-      ],
-      "url.patterns.restrictions": {
-        "domain": {
-          "backing.claim": "domain",
-          "operator": "EQUALS"
+  "clients": [
+    {
+      "twakemail-client": {
+        "webadmin.backend": "http://james:8000",
+        "webadmin.token": "{ENV:TWAKEMAIL_WEBADMIN_TOKEN}",
+        "expected.claims": {
+          "admin": "1"
+        },
+        "authorized.users": ["alice@example.com", "bob@example.com"],
+        "allowed.urls": [
+          {"denied": true, "endpoint": "/domains/{domain}/quota"},
+          {"verb": ["GET"], "endpoint": "/domains/{domain}/users"},
+          {"endpoint": "/domains/{domain}/aliases/*"}
+        ],
+        "url.patterns.restrictions": {
+          "domain": {
+            "backing.claim": "domain",
+            "operator": "EQUALS"
+          }
         }
       }
     }
-  }
+  ]
 }
 ```
 
@@ -54,11 +56,11 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added |
 | `self.webadmin.enabled` | no | `true` to start the self-admin HTTP server. Defaults to `false` |
 | `self.webadmin.port` | no | Port for the self-admin server. Required when `self.webadmin.enabled` is `true`. Use `0` for a random port |
-| `clients` | yes | Map of client configurations, keyed by OIDC `client_id` |
+| `clients` | yes | Ordered array of client configurations. Each element is a single-key object whose key is the OIDC `client_id`. Duplicate keys are allowed — the proxy picks the **first matching entry** for the authenticated user |
 
 ## Client configuration
 
-Each entry under `clients` is keyed by the OIDC `client_id` value that clients present in their tokens.
+Each element in the `clients` array is a single-key object. The key is the OIDC `client_id` that clients present in their tokens. When the same `client_id` appears more than once, the proxy evaluates the entries in order and selects the first one where both `authorized.users` and `expected.claims` match the incoming token.
 
 | Field | Required | Description |
 |-------|----------|-------------|

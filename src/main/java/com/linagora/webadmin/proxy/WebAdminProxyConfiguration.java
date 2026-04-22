@@ -19,9 +19,9 @@ import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,10 +38,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public record WebAdminProxyConfiguration(int port,
                                           OidcConfiguration oidcConfiguration,
-                                          Map<String, ClientConfiguration> clients,
+                                          List<Map.Entry<String, ClientConfiguration>> clients,
                                           Optional<Integer> selfAdminPort,
                                           boolean selfAdminEnabled,
                                           List<String> corsAllowOrigins) {
+
+    public List<ClientConfiguration> clientsForId(String clientId) {
+        return clients.stream()
+            .filter(e -> e.getKey().equals(clientId))
+            .map(Map.Entry::getValue)
+            .toList();
+    }
 
     public static Builder builder() {
         return new Builder();
@@ -50,7 +57,7 @@ public record WebAdminProxyConfiguration(int port,
     public static class Builder {
         private int port = 0;
         private OidcConfiguration oidcConfiguration;
-        private Map<String, ClientConfiguration> clients = new HashMap<>();
+        private List<Map.Entry<String, ClientConfiguration>> clients = new ArrayList<>();
         private Optional<Integer> selfAdminPort = Optional.empty();
         private boolean selfAdminEnabled = false;
         private List<String> corsAllowOrigins = new ArrayList<>();
@@ -65,8 +72,19 @@ public record WebAdminProxyConfiguration(int port,
             return this;
         }
 
-        public Builder clients(Map<String, ClientConfiguration> clients) {
-            this.clients = clients;
+        public Builder clients(List<Map.Entry<String, ClientConfiguration>> clientsList) {
+            this.clients = new ArrayList<>(clientsList);
+            return this;
+        }
+
+        public Builder clients(Map<String, ClientConfiguration> clientsMap) {
+            clientsMap.forEach((id, config) ->
+                this.clients.add(new AbstractMap.SimpleImmutableEntry<>(id, config)));
+            return this;
+        }
+
+        public Builder addClient(String clientId, ClientConfiguration config) {
+            this.clients.add(new AbstractMap.SimpleImmutableEntry<>(clientId, config));
             return this;
         }
 
@@ -86,7 +104,7 @@ public record WebAdminProxyConfiguration(int port,
         }
 
         public WebAdminProxyConfiguration build() {
-            return new WebAdminProxyConfiguration(port, oidcConfiguration, clients, selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins));
+            return new WebAdminProxyConfiguration(port, oidcConfiguration, List.copyOf(clients), selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins));
         }
     }
 
@@ -99,77 +117,8 @@ public record WebAdminProxyConfiguration(int port,
         JsonNode root = MAPPER.readTree(configFile);
 
         int port = Integer.parseInt(resolve(root.get("port").asText()));
-
-        URL userInfoUrl = URI.create(resolve(root.get("oidc.userInfo.url").asText())).toURL();
-        URL introspectUrl = URI.create(resolve(root.get("oidc.introspect.url").asText())).toURL();
-        Optional<String> introspectCredentials = Optional.ofNullable(root.get("oidc.introspect.credentials"))
-            .map(node -> resolve(node.asText()));
-        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);
-
-        JsonNode audienceNode = root.get("oidc.audience");
-        List<String> audiences = new ArrayList<>();
-        if (audienceNode.isArray()) {
-            audienceNode.forEach(n -> audiences.add(resolve(n.asText())));
-        } else {
-            audiences.add(resolve(audienceNode.asText()));
-        }
-        String userClaim = resolve(root.get("oidc.claim.authenticated.user").asText());
-        Duration cacheExpiration = DurationParser.parse(resolve(root.get("oidc.token.cache.expiration").asText()), ChronoUnit.SECONDS);
-
-        OidcConfiguration oidcConfiguration = new OidcConfiguration(
-            userInfoUrl, introspectionEndpoint, List.copyOf(audiences), userClaim, cacheExpiration);
-
-        Map<String, ClientConfiguration> clients = new HashMap<>();
-        Iterator<Map.Entry<String, JsonNode>> clientEntries = root.get("clients").fields();
-        while (clientEntries.hasNext()) {
-            Map.Entry<String, JsonNode> entry = clientEntries.next();
-            JsonNode clientNode = entry.getValue();
-            Map<String, String> expectedClaims = new HashMap<>();
-            JsonNode claimsNode = clientNode.get("expected.claims");
-            if (claimsNode != null) {
-                claimsNode.fields().forEachRemaining(claim ->
-                    expectedClaims.put(claim.getKey(), resolve(claim.getValue().asText())));
-            }
-            List<AllowedUrl> allowedUrls = new ArrayList<>();
-            JsonNode allowedUrlsNode = clientNode.get("allowed.urls");
-            if (allowedUrlsNode != null) {
-                for (JsonNode urlNode : allowedUrlsNode) {
-                    List<String> verbs = new ArrayList<>();
-                    JsonNode verbsNode = urlNode.get("verb");
-                    if (verbsNode != null) {
-                        verbsNode.forEach(v -> verbs.add(v.asText()));
-                    }
-                    boolean denied = Optional.ofNullable(urlNode.get("denied"))
-                        .map(JsonNode::asBoolean)
-                        .orElse(false);
-                    allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied));
-                }
-            }
-            Map<String, UrlPatternRestriction> urlPatternRestrictions = new HashMap<>();
-            JsonNode restrictionsNode = clientNode.get("url.patterns.restrictions");
-            if (restrictionsNode != null) {
-                restrictionsNode.fields().forEachRemaining(r -> {
-                    String varName = r.getKey();
-                    JsonNode restrictionNode = r.getValue();
-                    String backingClaim = restrictionNode.get("backing.claim").asText();
-                    UrlPatternRestriction.Operator operator = UrlPatternRestriction.Operator.valueOf(
-                        restrictionNode.get("operator").asText());
-                    urlPatternRestrictions.put(varName, new UrlPatternRestriction(backingClaim, operator));
-                });
-            }
-            List<String> authorizedUsers = new ArrayList<>();
-            JsonNode authorizedUsersNode = clientNode.get("authorized.users");
-            if (authorizedUsersNode != null) {
-                authorizedUsersNode.forEach(u -> authorizedUsers.add(resolve(u.asText())));
-            }
-            clients.put(entry.getKey(), new ClientConfiguration(
-                resolve(clientNode.get("webadmin.backend").asText()),
-                resolve(clientNode.get("webadmin.token").asText()),
-                expectedClaims,
-                allowedUrls,
-                urlPatternRestrictions,
-                authorizedUsers));
-        }
+        OidcConfiguration oidcConfiguration = parseOidcConfiguration(root);
+        List<Map.Entry<String, ClientConfiguration>> clients = parseClients(root);
 
         boolean selfAdminEnabled = Optional.ofNullable(root.get("self.webadmin.enabled"))
             .map(node -> Boolean.parseBoolean(resolve(node.asText())))
@@ -185,21 +134,115 @@ public record WebAdminProxyConfiguration(int port,
         if (selfAdminEnabled) {
             builder.selfAdminEnabled();
         }
-        JsonNode corsNode = root.get("cors.allow.origin");
-        if (corsNode != null) {
-            List<String> origins = new ArrayList<>();
-            if (corsNode.isArray()) {
-                corsNode.forEach(n -> origins.add(resolve(n.asText())));
-            } else {
-                origins.add(resolve(corsNode.asText()));
-            }
-            builder.corsAllowOrigins(origins);
-        }
+        parseCorsOrigins(root).ifPresent(builder::corsAllowOrigins);
 
         WebAdminProxyConfiguration config = builder.build();
         LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audiences={}, userClaim={}, clients={}",
-            port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"), audiences, userClaim, clients.keySet());
+            port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"),
+            oidcConfiguration.audiences(), oidcConfiguration.userClaim(),
+            config.clients().stream().map(Map.Entry::getKey).toList());
         return config;
+    }
+
+    private static OidcConfiguration parseOidcConfiguration(JsonNode root) throws IOException {
+        URL userInfoUrl = URI.create(resolve(root.get("oidc.userInfo.url").asText())).toURL();
+        URL introspectUrl = URI.create(resolve(root.get("oidc.introspect.url").asText())).toURL();
+        Optional<String> introspectCredentials = Optional.ofNullable(root.get("oidc.introspect.credentials"))
+            .map(node -> resolve(node.asText()));
+        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);
+        List<String> audiences = parseStringList(root.get("oidc.audience"));
+        String userClaim = resolve(root.get("oidc.claim.authenticated.user").asText());
+        Duration cacheExpiration = DurationParser.parse(resolve(root.get("oidc.token.cache.expiration").asText()), ChronoUnit.SECONDS);
+        return new OidcConfiguration(userInfoUrl, introspectionEndpoint, audiences, userClaim, cacheExpiration);
+    }
+
+    private static List<Map.Entry<String, ClientConfiguration>> parseClients(JsonNode root) {
+        List<Map.Entry<String, ClientConfiguration>> clients = new ArrayList<>();
+        for (JsonNode clientElement : root.get("clients")) {
+            clientElement.fields().forEachRemaining(entry ->
+                clients.add(parseClientEntry(entry.getKey(), entry.getValue())));
+        }
+        return clients;
+    }
+
+    private static Map.Entry<String, ClientConfiguration> parseClientEntry(String clientId, JsonNode clientNode) {
+        return new AbstractMap.SimpleImmutableEntry<>(clientId, new ClientConfiguration(
+            resolve(clientNode.get("webadmin.backend").asText()),
+            resolve(clientNode.get("webadmin.token").asText()),
+            parseExpectedClaims(clientNode),
+            parseAllowedUrls(clientNode),
+            parseUrlPatternRestrictions(clientNode),
+            parseAuthorizedUsers(clientNode)));
+    }
+
+    private static Map<String, String> parseExpectedClaims(JsonNode clientNode) {
+        Map<String, String> expectedClaims = new HashMap<>();
+        JsonNode claimsNode = clientNode.get("expected.claims");
+        if (claimsNode != null) {
+            claimsNode.fields().forEachRemaining(claim ->
+                expectedClaims.put(claim.getKey(), resolve(claim.getValue().asText())));
+        }
+        return expectedClaims;
+    }
+
+    private static List<AllowedUrl> parseAllowedUrls(JsonNode clientNode) {
+        List<AllowedUrl> allowedUrls = new ArrayList<>();
+        JsonNode allowedUrlsNode = clientNode.get("allowed.urls");
+        if (allowedUrlsNode != null) {
+            for (JsonNode urlNode : allowedUrlsNode) {
+                List<String> verbs = new ArrayList<>();
+                JsonNode verbsNode = urlNode.get("verb");
+                if (verbsNode != null) {
+                    verbsNode.forEach(v -> verbs.add(v.asText()));
+                }
+                boolean denied = Optional.ofNullable(urlNode.get("denied"))
+                    .map(JsonNode::asBoolean)
+                    .orElse(false);
+                allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied));
+            }
+        }
+        return allowedUrls;
+    }
+
+    private static Map<String, UrlPatternRestriction> parseUrlPatternRestrictions(JsonNode clientNode) {
+        Map<String, UrlPatternRestriction> urlPatternRestrictions = new HashMap<>();
+        JsonNode restrictionsNode = clientNode.get("url.patterns.restrictions");
+        if (restrictionsNode != null) {
+            restrictionsNode.fields().forEachRemaining(r -> {
+                JsonNode restrictionNode = r.getValue();
+                urlPatternRestrictions.put(r.getKey(), new UrlPatternRestriction(
+                    restrictionNode.get("backing.claim").asText(),
+                    UrlPatternRestriction.Operator.valueOf(restrictionNode.get("operator").asText())));
+            });
+        }
+        return urlPatternRestrictions;
+    }
+
+    private static List<String> parseAuthorizedUsers(JsonNode clientNode) {
+        List<String> authorizedUsers = new ArrayList<>();
+        JsonNode authorizedUsersNode = clientNode.get("authorized.users");
+        if (authorizedUsersNode != null) {
+            authorizedUsersNode.forEach(u -> authorizedUsers.add(resolve(u.asText())));
+        }
+        return authorizedUsers;
+    }
+
+    private static List<String> parseStringList(JsonNode node) {
+        List<String> result = new ArrayList<>();
+        if (node.isArray()) {
+            node.forEach(n -> result.add(resolve(n.asText())));
+        } else {
+            result.add(resolve(node.asText()));
+        }
+        return List.copyOf(result);
+    }
+
+    private static Optional<List<String>> parseCorsOrigins(JsonNode root) {
+        JsonNode corsNode = root.get("cors.allow.origin");
+        if (corsNode == null) {
+            return Optional.empty();
+        }
+        return Optional.of(parseStringList(corsNode));
     }
 
     private static String resolve(String value) {
