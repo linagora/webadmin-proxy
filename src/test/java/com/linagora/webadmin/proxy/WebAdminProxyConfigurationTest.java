@@ -287,6 +287,38 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void expectedScopesShouldBeEmptyWhenAbsent() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
+            assertThat(config.clientsForId("my-client").get(0).expectedScopes()).isEmpty();
+        }
+
+        @Test
+        void shouldParseExpectedScopes() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "expected.scopes": ["scopea", "scopeb"]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.clientsForId("my-client").get(0).expectedScopes())
+                .containsExactlyInAnyOrder("scopea", "scopeb");
+        }
+
+        @Test
         void shouldParseAuthorizedUsers() throws Exception {
             String json = """
                 {

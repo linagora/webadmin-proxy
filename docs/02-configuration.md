@@ -24,6 +24,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
         "expected.claims": {
           "admin": "1"
         },
+        "expected.scopes": ["webadmin", "admin"],
         "authorized.users": ["alice@example.com", "bob@example.com"],
         "allowed.urls": [
           {"denied": true, "endpoint": "/domains/{domain}/quota"},
@@ -67,6 +68,7 @@ Each element in the `clients` array is a single-key object. The key is the OIDC 
 | `webadmin.backend` | yes | Base URL of the James WebAdmin backend to proxy to |
 | `webadmin.token` | yes | Bearer token used to authenticate requests to the backend |
 | `expected.claims` | no | Map of claim name → required value. All listed claims must be present in userinfo with exactly the specified value |
+| `expected.scopes` | no | List of OAuth 2.0 scopes that must all be present in the token's `scope` field (from the introspection response, RFC 7662). If empty or absent, no scope restriction is applied. Extra scopes in the token are ignored |
 | `authorized.users` | no | Allowlist of user identities (as resolved by `oidc.claim.authenticated.user`). If non-empty, only listed users are admitted. Useful when OIDC claim configuration is impractical |
 | `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins |
 | `url.patterns.restrictions` | no | Constraints on URL template variables, validated against OIDC claims |

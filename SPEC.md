@@ -372,6 +372,32 @@ Syntax:
 ```
 
 
+### Step 5.76: Expected scopes validation
+
+Validate that the OIDC token carries all the OAuth 2.0 scopes required by the client configuration. Scopes are read from the `scope` field of the introspection response (RFC 7662 §2.2), which is a space-separated string. All specified scopes must be present; extra scopes in the token are ignored.
+
+Syntax:
+
+```json
+"clients": [
+  {
+    "clientIdA": {
+      "webadmin.backend": "http://127.0.0.1:8000",
+      "webadmin.token": "mastertokenvalue",
+      "expected.scopes": ["scopea", "scopeb"]
+    }
+  }
+]
+```
+
+Like `expected.claims` and `authorized.users`, `expected.scopes` participates in the multi-entry selection logic: an entry is a candidate only when all required scopes are present. If empty or absent, no scope restriction is applied.
+
+Definition of done:
+ - SPEC.md is updated (done)
+ - Implemented
+ - Covered with IT tests
+ - Documented in /docs
+
 ### Step 6: Expose backchannel logout
 
 The proxy exposes its own admin API (distinct from the proxied James webadmin). For now it exposes a single endpoint: backchannel logout, allowing the OIDC provider to invalidate cached tokens upon session termination.

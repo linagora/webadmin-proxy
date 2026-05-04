@@ -172,7 +172,8 @@ public record WebAdminProxyConfiguration(int port,
             parseExpectedClaims(clientNode),
             parseAllowedUrls(clientNode),
             parseUrlPatternRestrictions(clientNode),
-            parseAuthorizedUsers(clientNode)));
+            parseAuthorizedUsers(clientNode),
+            parseExpectedScopes(clientNode)));
     }
 
     private static Map<String, String> parseExpectedClaims(JsonNode clientNode) {
@@ -225,6 +226,15 @@ public record WebAdminProxyConfiguration(int port,
             authorizedUsersNode.forEach(u -> authorizedUsers.add(resolve(u.asText())));
         }
         return authorizedUsers;
+    }
+
+    private static List<String> parseExpectedScopes(JsonNode clientNode) {
+        List<String> expectedScopes = new ArrayList<>();
+        JsonNode scopesNode = clientNode.get("expected.scopes");
+        if (scopesNode != null) {
+            scopesNode.forEach(s -> expectedScopes.add(resolve(s.asText())));
+        }
+        return expectedScopes;
     }
 
     private static List<String> parseStringList(JsonNode node) {
