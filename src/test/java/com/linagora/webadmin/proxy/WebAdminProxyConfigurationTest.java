@@ -287,6 +287,38 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void expectedScopesShouldBeEmptyWhenAbsent() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
+            assertThat(config.clientsForId("my-client").get(0).expectedScopes()).isEmpty();
+        }
+
+        @Test
+        void shouldParseExpectedScopes() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "expected.scopes": ["scopea", "scopeb"]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.clientsForId("my-client").get(0).expectedScopes())
+                .containsExactlyInAnyOrder("scopea", "scopeb");
+        }
+
+        @Test
         void shouldParseAuthorizedUsers() throws Exception {
             String json = """
                 {
@@ -518,6 +550,158 @@ class WebAdminProxyConfigurationTest {
             assertThatThrownBy(() -> WebAdminProxyConfiguration.from(writeConfig(json)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("THIS_VAR_DOES_NOT_EXIST_XYZ_12345");
+        }
+    }
+
+    @Nested
+    class AllowedUrlsInclude {
+
+        private File writeConfigWithInclude(String includeUri) throws IOException {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+                          {"include": "%s"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(includeUri);
+            return writeConfig(json);
+        }
+
+        @Test
+        void shouldExpandClasspathInclude() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
+                writeConfigWithInclude("classpath://test-allowed-urls.json"));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls).hasSize(4);
+            assertThat(urls.get(0).endpointPattern()).isEqualTo("/domains/{domain}?action=deleteData");
+            assertThat(urls.get(0).isDenied()).isTrue();
+            assertThat(urls.get(1).endpointPattern()).isEqualTo("/domains/{domain}");
+            assertThat(urls.get(2).verbs()).containsExactly("GET");
+            assertThat(urls.get(3).isDenied()).isTrue();
+        }
+
+        @Test
+        void shouldExpandFileRelativeInclude() throws Exception {
+            Path includeFile = tempDir.resolve("extra-urls.json");
+            Files.writeString(includeFile, """
+                [
+                  {"endpoint": "/domains/{domain}"},
+                  {"verb": ["GET"], "endpoint": "/users/%@{domain}"}
+                ]
+                """);
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
+                writeConfigWithInclude("file://" + includeFile.toAbsolutePath()));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls).hasSize(3);
+            assertThat(urls.get(0).endpointPattern()).isEqualTo("/domains/{domain}?action=deleteData");
+            assertThat(urls.get(1).endpointPattern()).isEqualTo("/domains/{domain}");
+            assertThat(urls.get(2).endpointPattern()).isEqualTo("/users/%@{domain}");
+        }
+
+        @Test
+        void shouldExpandFileAbsoluteInclude() throws Exception {
+            Path includeFile = tempDir.resolve("extra-urls-abs.json");
+            Files.writeString(includeFile, """
+                [{"endpoint": "/tasks/*"}]
+                """);
+            String absolutePath = includeFile.toAbsolutePath().toString();
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
+                writeConfigWithInclude("file:///" + absolutePath.substring(1)));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls).hasSize(2);
+            assertThat(urls.get(1).endpointPattern()).isEqualTo("/tasks/*");
+        }
+
+        @Test
+        void shouldPreserveOrderInlineThenIncluded() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
+                writeConfigWithInclude("classpath://test-allowed-urls.json"));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls.get(0).endpointPattern()).isEqualTo("/domains/{domain}?action=deleteData");
+            assertThat(urls.get(1).endpointPattern()).isEqualTo("/domains/{domain}");
+        }
+
+        @Test
+        void shouldLoadCalendarBaselineProfile() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"include": "classpath://functional-admin-calendar-baseline.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls).hasSize(10);
+            assertThat(urls.stream().map(u -> u.endpointPattern()))
+                .contains("/domains/{domain}", "/calendars/%@{domain}", "/tasks/*");
+        }
+
+        @Test
+        void shouldLoadMailBaselineProfile() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"include": "classpath://functional-admin-mail-baseline.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            assertThat(urls).hasSize(23);
+            assertThat(urls.stream().map(u -> u.endpointPattern()))
+                .contains("/domains/{domain}", "/users/%@{domain}", "/tasks/*");
+        }
+
+        @Test
+        void shouldThrowWhenClasspathResourceNotFound() throws Exception {
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(
+                    writeConfigWithInclude("classpath://nonexistent.json")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("nonexistent.json");
         }
     }
 }

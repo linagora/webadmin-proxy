@@ -84,7 +84,7 @@ public class OidcTokenResolver {
         }
 
         ClientConfiguration clientConfiguration = entriesForClientId.stream()
-            .filter(config -> isUserAuthorized(config, user) && claimsMatch(config, userInfo))
+            .filter(config -> isUserAuthorized(config, user) && claimsMatch(config, userInfo) && scopesMatch(config, introspect))
             .findFirst()
             .orElseThrow(() -> new AccessForbiddenException(
                 "No applicable configuration for user '" + user + "' with client '" + clientId + "'"));
@@ -97,6 +97,17 @@ public class OidcTokenResolver {
     private boolean isUserAuthorized(ClientConfiguration config, String user) {
         List<String> authorizedUsers = config.authorizedUsers();
         return authorizedUsers.isEmpty() || authorizedUsers.contains(user);
+    }
+
+    private boolean scopesMatch(ClientConfiguration config, TokenIntrospectionResponse introspect) {
+        List<String> requiredScopes = config.expectedScopes();
+        if (requiredScopes.isEmpty()) {
+            return true;
+        }
+        List<String> tokenScopes = introspect.scope()
+            .map(s -> List.of(s.split("\\s+")))
+            .orElse(List.of());
+        return tokenScopes.containsAll(requiredScopes);
     }
 
     private boolean claimsMatch(ClientConfiguration config, UserinfoResponse userInfo) {

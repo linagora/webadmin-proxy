@@ -155,9 +155,6 @@ Use the configured webadmin token as an authentication backend
 
 Validate with IT tests, including edge cases.
 
-#### Definition of done
-
-Definition of done: Write IT tests.
 
 ### Step 3: Extra claim validation
 
@@ -245,9 +242,6 @@ If no allowed.url is specified then all are allowed!
 
 If `verb` is omitted from a rule, all HTTP verbs are allowed.
 
-Definition of done: Write IT tests.
-
-
 ### Step 5: domain validation
 
 We want to have for some clients extra validation of the url templates variables. Goal is of course to scope admin operation to the actual domain of the user.
@@ -297,8 +291,6 @@ Supported url.patterns.restrictions operator:
 
 If the claim referenced by `backing.claim` is absent from the token, the request MUST be rejected with 403. A missing claim must never silently pass as unrestricted access.
 
-Definition of done: Write IT tests.
-
 ### Step 5.5: Email local-part wildcard for user endpoints
 
 James user endpoints address users by their full email address (e.g. `GET /users/bob@example.com/mailboxes`). The `%` wildcard in endpoint patterns matches the local part of an email (any characters except `@` and `/`), so that `%@{domain}` binds the domain segment for use in `url.patterns.restrictions`.
@@ -326,8 +318,6 @@ Example: a client that may only manage users belonging to its own domain:
 An admin whose `email` claim is `alice@example.com` can reach `/users/bob@example.com/mailboxes` (domain matches) but NOT `/users/bob@other.com/mailboxes` (domain mismatch → 403).
 
 The `%` token captures no named variable — it is a pure consumer of the local part. Only `{domain}` is captured and passed to `url.patterns.restrictions`.
-
-Definition of done: Write IT tests.
 
 ### Step 5.75: Authorized users
 
@@ -372,6 +362,55 @@ Syntax:
 ```
 
 
+### Step 5.755: allowed.urls includes
+
+Allow `allowed.urls` entries to reference external JSON files instead of listing endpoints inline. The referenced file must be a JSON array of standard `allowed.urls` rule objects. Its entries are injected in place of the include entry — order is preserved. No changes to internal POJOs; this is purely a configuration-parsing concern.
+
+#### Syntax
+
+```json
+"allowed.urls": [
+  {"denied": true, "verb": ["POST"], "endpoint": "/users/{user}?action=deleteData"},
+  {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+  {"include": "classpath://functional-admin-calendar-baseline.json"}
+]
+```
+
+#### Supported URI schemes
+
+| Scheme | Resolution |
+|--------|------------|
+| `classpath://path` | Resource on the JVM classpath (e.g. packaged in the JAR) |
+| `file://relative/path` | Path relative to the current working directory |
+| `file:///absolute/path` | Absolute filesystem path |
+
+#### Shipped baseline profiles (on classpath)
+
+| Resource | Contents |
+|----------|----------|
+| `functional-admin-calendar-baseline.json` | Standard Twake Calendar functional admin endpoints (domains, users, resources, calendars, tasks) |
+| `functional-admin-mail-baseline.json` | Standard Twake Mail functional admin endpoints (domains, users, quotas, addresses, forwards, mappings, vacation, deleted messages, tasks) |
+
+### Step 5.76: Expected scopes validation
+
+Validate that the OIDC token carries all the OAuth 2.0 scopes required by the client configuration. Scopes are read from the `scope` field of the introspection response (RFC 7662 §2.2), which is a space-separated string. All specified scopes must be present; extra scopes in the token are ignored.
+
+Syntax:
+
+```json
+"clients": [
+  {
+    "clientIdA": {
+      "webadmin.backend": "http://127.0.0.1:8000",
+      "webadmin.token": "mastertokenvalue",
+      "expected.scopes": ["scopea", "scopeb"]
+    }
+  }
+]
+```
+
+Like `expected.claims` and `authorized.users`, `expected.scopes` participates in the multi-entry selection logic: an entry is a candidate only when all required scopes are present. If empty or absent, no scope restriction is applied.
+
 ### Step 6: Expose backchannel logout
 
 The proxy exposes its own admin API (distinct from the proxied James webadmin). For now it exposes a single endpoint: backchannel logout, allowing the OIDC provider to invalidate cached tokens upon session termination.
@@ -392,15 +431,11 @@ Set up backchannel logout route CF /home/hp/Documents/twake-calendar/calendar-we
 
 Test backchannel.
 
-Definition of done: Write IT tests.
-
 ### Step 7: Observability
 
 The proxy's admin API shall expose:
  - **Metrics**: use `org.apache.james.metrics.api` for recording metrics, exposed via `org.apache.james.webadmin.dropwizard.MetricsRoutes` on the admin HTTP server CF /home/hp/Documents/twake-calendar/app/src/main/java/com/linagora/calendar/app/TwakeCalendarMain.java
  - **Healthcheck API**: expose the standard James healthcheck routes on the admin HTTP server
-
-Definition of done: Write IT tests for both endpoints.
 
 ### Step 8: Advertize the configuration to clients
 
@@ -420,8 +455,6 @@ Response:
 ```
 
 Answer 204 no content if this field is not configured.
-
-Definition of done: Write IT tests.
 
 ### Step 9: Documentation
 
@@ -457,8 +490,6 @@ Both endpoints require a valid Bearer token and apply the same `authorized.users
 
 Allow Twake Mail functional admin frontend to auto-populate user context (current user identity, managed domain) without requiring the frontend to parse or introspect OIDC tokens.
 
-Definition of done: Write IT tests.
-
 ### Step 11: Inline deny rules in allowed.urls
 
 Extend `allowed.urls` to support a `"denied": true` flag on any rule. Rules are evaluated **in order**; the first matching rule wins. A matching denied rule returns 403 immediately.
@@ -490,8 +521,6 @@ This allows compact configs where a broad wildcard covers most paths and a few e
 #### `/.proxy/allowed/urls` response
 
 Deny rules are included in the response with `"denied": true` so that frontends can reflect the full ACL. Rules without the flag omit the `denied` key entirely.
-
-Definition of done: Write IT tests.
 
 ### Step 12: Clients as an ordered array with duplicate client_id support
 
