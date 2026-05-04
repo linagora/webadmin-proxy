@@ -1,0 +1,12 @@
+[
+  {"endpoint": "/domains/{domain}"},
+  {"endpoint": "/domains/{domain}/*"},
+  {"endpoint": "/users/%@{domain}"},
+  {"endpoint": "/resources?domain={domain}"},
+  {"endpoint": "/addressbook/domain-members/{domain}"},
+  {"endpoint": "/calendars/%@{domain}"},
+  {"endpoint": "/calendars/%@{domain}/*"},
+  {"endpoint": "/tasks/*"},
+  {"endpoint": "/registeredUsers"},
+  {"endpoint": "/resources/*"}
+]

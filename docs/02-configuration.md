@@ -87,13 +87,45 @@ This makes it easy to carve out exceptions from a broad wildcard without enumera
 ]
 ```
 
-Each rule has:
+Each rule is either a regular endpoint rule or an include directive:
+
+**Endpoint rule:**
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | `endpoint` | yes | Endpoint pattern (see pattern syntax below) |
 | `verb` | no | List of HTTP verbs this rule applies to (e.g. `["GET", "PUT"]`). If omitted, the rule matches all verbs |
 | `denied` | no | `true` to explicitly deny matching requests with 403. Defaults to `false` |
+
+**Include directive:**
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `include` | yes | URI of a JSON file containing an array of endpoint rules to inject in place of this entry |
+
+Include URIs use the following schemes:
+
+| Scheme | Resolution |
+|--------|------------|
+| `classpath://path` | Resource on the JVM classpath (packaged in the JAR) |
+| `file://relative/path` | Path relative to the current working directory |
+| `file:///absolute/path` | Absolute filesystem path |
+
+The proxy ships two ready-made baseline profiles on the classpath:
+
+| Profile | Description |
+|---------|-------------|
+| `classpath://functional-admin-calendar-baseline.json` | Standard Twake Calendar functional admin endpoints: domains, users, resources, address book, calendars, tasks |
+| `classpath://functional-admin-mail-baseline.json` | Standard Twake Mail functional admin endpoints: domains, users, quotas, address aliases and forwards, mappings, vacation, deleted messages, tasks |
+
+Example using a deny rule before the calendar baseline:
+
+```json
+"allowed.urls": [
+  {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+  {"include": "classpath://functional-admin-calendar-baseline.json"}
+]
+```
 
 ### Endpoint pattern syntax
 

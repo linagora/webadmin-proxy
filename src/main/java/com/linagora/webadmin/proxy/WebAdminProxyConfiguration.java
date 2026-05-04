@@ -14,7 +14,9 @@
 package com.linagora.webadmin.proxy;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
@@ -192,18 +194,60 @@ public record WebAdminProxyConfiguration(int port,
         JsonNode allowedUrlsNode = clientNode.get("allowed.urls");
         if (allowedUrlsNode != null) {
             for (JsonNode urlNode : allowedUrlsNode) {
-                List<String> verbs = new ArrayList<>();
-                JsonNode verbsNode = urlNode.get("verb");
-                if (verbsNode != null) {
-                    verbsNode.forEach(v -> verbs.add(v.asText()));
+                JsonNode includeNode = urlNode.get("include");
+                if (includeNode != null) {
+                    allowedUrls.addAll(loadIncludedAllowedUrls(includeNode.asText()));
+                } else {
+                    allowedUrls.add(parseSingleAllowedUrl(urlNode));
                 }
-                boolean denied = Optional.ofNullable(urlNode.get("denied"))
-                    .map(JsonNode::asBoolean)
-                    .orElse(false);
-                allowedUrls.add(new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied));
             }
         }
         return allowedUrls;
+    }
+
+    private static AllowedUrl parseSingleAllowedUrl(JsonNode urlNode) {
+        List<String> verbs = new ArrayList<>();
+        JsonNode verbsNode = urlNode.get("verb");
+        if (verbsNode != null) {
+            verbsNode.forEach(v -> verbs.add(v.asText()));
+        }
+        boolean denied = Optional.ofNullable(urlNode.get("denied"))
+            .map(JsonNode::asBoolean)
+            .orElse(false);
+        return new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied);
+    }
+
+    private static List<AllowedUrl> loadIncludedAllowedUrls(String includeUri) {
+        try (InputStream stream = openInclude(includeUri)) {
+            JsonNode array = MAPPER.readTree(stream);
+            List<AllowedUrl> result = new ArrayList<>();
+            for (JsonNode urlNode : array) {
+                result.add(parseSingleAllowedUrl(urlNode));
+            }
+            return result;
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Failed to load included allowed.urls from: " + includeUri, e);
+        }
+    }
+
+    private static InputStream openInclude(String includeUri) throws IOException {
+        if (includeUri.startsWith("classpath://")) {
+            String path = includeUri.substring("classpath://".length());
+            InputStream stream = WebAdminProxyConfiguration.class.getClassLoader().getResourceAsStream(path);
+            if (stream == null) {
+                throw new IllegalArgumentException("Classpath resource not found: " + path);
+            }
+            return stream;
+        }
+        if (includeUri.startsWith("file:///")) {
+            String path = "/" + includeUri.substring("file:///".length());
+            return new FileInputStream(path);
+        }
+        if (includeUri.startsWith("file://")) {
+            String path = includeUri.substring("file://".length());
+            return new FileInputStream(path);
+        }
+        throw new IllegalArgumentException("Unsupported include URI scheme (supported: classpath://, file://, file:///): " + includeUri);
     }
 
     private static Map<String, UrlPatternRestriction> parseUrlPatternRestrictions(JsonNode clientNode) {
