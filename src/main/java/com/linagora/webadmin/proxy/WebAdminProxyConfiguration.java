@@ -166,14 +166,15 @@ public record WebAdminProxyConfiguration(int port,
     }
 
     private static Map.Entry<String, ClientConfiguration> parseClientEntry(String clientId, JsonNode clientNode) {
-        return new AbstractMap.SimpleImmutableEntry<>(clientId, new ClientConfiguration(
-            resolve(clientNode.get("webadmin.backend").asText()),
-            resolve(clientNode.get("webadmin.token").asText()),
-            parseExpectedClaims(clientNode),
-            parseAllowedUrls(clientNode),
-            parseUrlPatternRestrictions(clientNode),
-            parseAuthorizedUsers(clientNode),
-            parseExpectedScopes(clientNode)));
+        return new AbstractMap.SimpleImmutableEntry<>(clientId, ClientConfiguration.builder()
+            .webadminBackend(resolve(clientNode.get("webadmin.backend").asText()))
+            .webadminToken(resolve(clientNode.get("webadmin.token").asText()))
+            .expectedClaims(parseExpectedClaims(clientNode))
+            .allowedUrls(parseAllowedUrls(clientNode))
+            .urlPatternRestrictions(parseUrlPatternRestrictions(clientNode))
+            .authorizedUsers(parseAuthorizedUsers(clientNode))
+            .expectedScopes(parseExpectedScopes(clientNode))
+            .build());
     }
 
     private static Map<String, String> parseExpectedClaims(JsonNode clientNode) {

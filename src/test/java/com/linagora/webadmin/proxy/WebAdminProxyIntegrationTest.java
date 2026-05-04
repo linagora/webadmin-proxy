@@ -79,7 +79,7 @@ class WebAdminProxyIntegrationTest {
             userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
 
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+            CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
 
         return WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
     }
@@ -406,7 +406,7 @@ class WebAdminProxyIntegrationTest {
         OidcConfiguration oidcConfiguration = new OidcConfiguration(
             userInfoUrl, introspectionEndpoint, List.of("aud-a", "aud-b"), "email", Duration.ofSeconds(60));
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+            CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
         WebAdminProxyGuiceServer multiAudServer = WebAdminProxyGuiceServer.forModule(
             new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build()));
@@ -444,7 +444,7 @@ class WebAdminProxyIntegrationTest {
         OidcConfiguration oidcConfiguration = new OidcConfiguration(
             userInfoUrl, introspectionEndpoint, List.of("aud-a", "aud-b"), "email", Duration.ofSeconds(60));
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+            CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
         WebAdminProxyGuiceServer multiAudServer = WebAdminProxyGuiceServer.forModule(
             new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build()));
@@ -481,7 +481,7 @@ class WebAdminProxyIntegrationTest {
         OidcConfiguration oidcConfiguration = new OidcConfiguration(
             userInfoUrl, introspectionEndpoint, List.of("aud-a", "aud-b"), "email", Duration.ofSeconds(60));
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+            CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
         WebAdminProxyGuiceServer multiAudServer = WebAdminProxyGuiceServer.forModule(
             new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build()));
@@ -520,7 +520,7 @@ class WebAdminProxyIntegrationTest {
         OidcConfiguration oidcConfiguration = new OidcConfiguration(
             userInfoUrl, introspectionEndpoint, List.of("aud-a", "aud-b"), "email", Duration.ofSeconds(60));
         Map<String, ClientConfiguration> clients = Map.of(
-            CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+            CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
         WebAdminProxyGuiceServer multiAudServer = WebAdminProxyGuiceServer.forModule(
             new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build()));
@@ -707,8 +707,11 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(allowedUrls)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -885,8 +888,11 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(allowedUrls)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
@@ -1080,8 +1086,12 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions, List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(allowedUrls)
+                    .urlPatternRestrictions(restrictions)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1283,8 +1293,12 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, restrictions, List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(allowedUrls)
+                    .urlPatternRestrictions(restrictions)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1416,14 +1430,11 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
 
             Map<String, ClientConfiguration> clients = Map.of(
-                RESTRICTED_CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort,
-                    WEBADMIN_TOKEN,
-                    Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE),
-                    List.of(),
-                    Map.of(),
-                    List.of(),
-                    List.of()));
+                RESTRICTED_CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .expectedClaims(Map.of(REQUIRED_CLAIM_NAME, REQUIRED_CLAIM_VALUE))
+                    .build());
 
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
@@ -1563,14 +1574,11 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
 
             Map<String, ClientConfiguration> clients = Map.of(
-                RESTRICTED_CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort,
-                    WEBADMIN_TOKEN,
-                    Map.of(),
-                    List.of(),
-                    Map.of(),
-                    List.of(),
-                    List.of("scopea", "scopeb")));
+                RESTRICTED_CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .expectedScopes(List.of("scopea", "scopeb"))
+                    .build());
 
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration).clients(clients).build();
@@ -1707,8 +1715,11 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), authorizedUsers, List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .authorizedUsers(authorizedUsers)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1776,8 +1787,12 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, expectedClaims, List.of(), Map.of(), authorizedUsers, List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .expectedClaims(expectedClaims)
+                    .authorizedUsers(authorizedUsers)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1853,8 +1868,12 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), allowedUrls, Map.of(), authorizedUsers, List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(allowedUrls)
+                    .authorizedUsers(authorizedUsers)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -1922,7 +1941,7 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).selfAdminPort(0).selfAdminEnabled().build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -2186,7 +2205,7 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN, Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder().webadminBackend("http://localhost:" + backendPort).webadminToken(WEBADMIN_TOKEN).build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).clients(clients).selfAdminPort(0).selfAdminEnabled().build();
             proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
             proxyServer.start();
@@ -2287,11 +2306,13 @@ class WebAdminProxyIntegrationTest {
                     .withContentType(APPLICATION_JSON)
                     .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(List.of(
                         new AllowedUrl(List.of("GET"), "/domains/{domain}/users"),
-                        new AllowedUrl(List.of(), "/domains/{domain}/aliases/*")),
-                    Map.of(), List.of(), List.of()));
+                        new AllowedUrl(List.of(), "/domains/{domain}/aliases/*")))
+                    .build());
             proxyServer = startProxy(clients);
         }
 
@@ -2345,8 +2366,10 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldReturn204WhenNoAllowedUrlsConfigured() throws Exception {
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build());
             WebAdminProxyGuiceServer emptyServer = startProxy(clients);
             try {
                 given()
@@ -2391,9 +2414,12 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldReturn403WhenUserNotAuthorized() throws Exception {
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(new AllowedUrl(List.of(), "/domains")),
-                    Map.of(), List.of("other@example.com"), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(List.of(new AllowedUrl(List.of(), "/domains")))
+                    .authorizedUsers(List.of("other@example.com"))
+                    .build());
             WebAdminProxyGuiceServer restrictedServer = startProxy(clients);
             try {
                 given()
@@ -2424,11 +2450,13 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldIncludeDeniedFlagWhenSet() throws Exception {
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(List.of(
                         new AllowedUrl(List.of(), "/domains/{domain}/quota", true),
-                        new AllowedUrl(List.of(), "/domains/{domain}/*")),
-                    Map.of(), List.of(), List.of()));
+                        new AllowedUrl(List.of(), "/domains/{domain}/*")))
+                    .build());
             WebAdminProxyGuiceServer server = startProxy(clients);
             try {
                 Response response = given()
@@ -2449,9 +2477,11 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldOmitDeniedFlagWhenFalse() throws Exception {
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(new AllowedUrl(List.of(), "/domains/{domain}/*")),
-                    Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .allowedUrls(List.of(new AllowedUrl(List.of(), "/domains/{domain}/*")))
+                    .build());
             WebAdminProxyGuiceServer server = startProxy(clients);
             try {
                 Response response = given()
@@ -2484,8 +2514,10 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:" + backendPort, WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendPort)
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
                 .clients(clients)
@@ -2663,8 +2695,10 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
                 .clients(clients)
@@ -2789,8 +2823,10 @@ class WebAdminProxyIntegrationTest {
             OidcConfiguration oidcConfiguration = new OidcConfiguration(
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             Map<String, ClientConfiguration> clients = Map.of(
-                CLIENT_ID, new ClientConfiguration("http://localhost:9999", WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()));
+                CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:9999")
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build());
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
                 .clients(clients)
@@ -2913,12 +2949,16 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             return WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(ALICE), List.of()))
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(BOB), List.of()))
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer1.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .authorizedUsers(List.of(ALICE))
+                    .build())
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer2.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .authorizedUsers(List.of(BOB))
+                    .build())
                 .build();
         }
 
@@ -2931,12 +2971,16 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             return WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of("role", "admin"), List.of(), Map.of(), List.of(), List.of()))
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of("role", "user"), List.of(), Map.of(), List.of(), List.of()))
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer1.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .expectedClaims(Map.of("role", "admin"))
+                    .build())
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer2.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .expectedClaims(Map.of("role", "user"))
+                    .build())
                 .build();
         }
 
@@ -3058,12 +3102,14 @@ class WebAdminProxyIntegrationTest {
                 userInfoUrl, introspectionEndpoint, List.of(AUDIENCE), "email", Duration.ofSeconds(60));
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
                 .oidcConfiguration(oidcConfiguration)
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer1.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()))
-                .addClient(CLIENT_ID, new ClientConfiguration(
-                    "http://localhost:" + backendMockServer2.getLocalPort(), WEBADMIN_TOKEN,
-                    Map.of(), List.of(), Map.of(), List.of(), List.of()))
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer1.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build())
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend("http://localhost:" + backendMockServer2.getLocalPort())
+                    .webadminToken(WEBADMIN_TOKEN)
+                    .build())
                 .build();
             proxyServer = startProxy(config);
             stubIntrospect(USER_EMAIL);
