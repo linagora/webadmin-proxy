@@ -697,6 +697,21 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void shouldExpandNestedIncludes() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
+                writeConfigWithInclude("classpath://test-allowed-urls-fragment.json"));
+            var urls = config.clientsForId("my-client").get(0).allowedUrls();
+            // 1 inline denied + /healthcheck (from fragment) + 3 from test-allowed-urls.json (nested include)
+            assertThat(urls).hasSize(5);
+            assertThat(urls.get(0).endpointPattern()).isEqualTo("/domains/{domain}?action=deleteData");
+            assertThat(urls.get(1).endpointPattern()).isEqualTo("/healthcheck");
+            assertThat(urls.get(2).endpointPattern()).isEqualTo("/domains/{domain}");
+            assertThat(urls.get(3).endpointPattern()).isEqualTo("/users/%@{domain}");
+            assertThat(urls.get(4).endpointPattern()).isEqualTo("/domains/{domain}/quota");
+            assertThat(urls.get(4).isDenied()).isTrue();
+        }
+
+        @Test
         void shouldThrowWhenClasspathResourceNotFound() throws Exception {
             assertThatThrownBy(() -> WebAdminProxyConfiguration.from(
                     writeConfigWithInclude("classpath://nonexistent.json")))
