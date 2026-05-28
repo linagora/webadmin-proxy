@@ -21,10 +21,13 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.stream.Stream;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 class WebAdminProxyConfigurationTest {
 
@@ -717,6 +720,48 @@ class WebAdminProxyConfigurationTest {
                     writeConfigWithInclude("classpath://nonexistent.json")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("nonexistent.json");
+        }
+    }
+
+    @Nested
+    class PredefinedProfiles {
+
+        static Stream<String> predefinedProfileNames() throws IOException {
+            try (var files = Files.list(Path.of("src/main/resources"))) {
+                return files
+                    .filter(p -> p.toString().endsWith(".json"))
+                    .map(p -> p.getFileName().toString())
+                    .toList()
+                    .stream();
+            }
+        }
+
+        @ParameterizedTest
+        @MethodSource("predefinedProfileNames")
+        void shouldParseWithoutError(String filename) throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"include": "classpath://%s"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(filename);
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.clientsForId("my-client").get(0).allowedUrls()).isNotEmpty();
         }
     }
 }
