@@ -1,0 +1,8 @@
+[
+        {"endpoint": "/healthcheck"},
+        {"endpoint": "/metrics"},
+        {"endpoint": "/tasks/*"},
+        {"denied":true, "verb":["POST"], "endpoint": "/users/{user}?action=deleteData"},
+        {"denied": true, "verb":["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+        {"include": "classpath://functional-admin-calendar-baseline.json"}
+]
