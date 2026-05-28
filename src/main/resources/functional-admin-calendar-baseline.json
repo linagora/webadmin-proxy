@@ -10,6 +10,6 @@
   {"endpoint": "/tasks/{domain}/*"},
   {"endpoint": "/domains/{domain}/registeredUsers"},
   {"endpoint": "/domains/{domain}/registeredUsers/*"},
-  {"endpoint": "/resources/{domain}"}
+  {"endpoint": "/resources/{domain}"},
   {"endpoint": "/resources/{domain}/*"}
 ]

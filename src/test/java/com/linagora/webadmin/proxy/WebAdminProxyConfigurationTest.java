@@ -664,9 +664,9 @@ class WebAdminProxyConfigurationTest {
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
             var urls = config.clientsForId("my-client").get(0).allowedUrls();
-            assertThat(urls).hasSize(10);
+            assertThat(urls).hasSize(13);
             assertThat(urls.stream().map(u -> u.endpointPattern()))
-                .contains("/domains/{domain}", "/calendars/%@{domain}", "/tasks/*");
+                .contains("/domains/{domain}", "/calendars/%@{domain}", "/tasks/{domain}/*");
         }
 
         @Test
@@ -694,9 +694,9 @@ class WebAdminProxyConfigurationTest {
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
             var urls = config.clientsForId("my-client").get(0).allowedUrls();
-            assertThat(urls).hasSize(23);
+            assertThat(urls).hasSize(24);
             assertThat(urls.stream().map(u -> u.endpointPattern()))
-                .contains("/domains/{domain}", "/users/%@{domain}", "/tasks/*");
+                .contains("/domains/{domain}", "/users/%@{domain}", "/tasks/{domain}/*");
         }
 
         @Test

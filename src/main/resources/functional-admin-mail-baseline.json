@@ -21,6 +21,6 @@
   {"endpoint": "/quota/users?domain={domain}"},
   {"endpoint": "/servers/channels/user=%@{domain}"},
   {"endpoint": "/servers/channels/%@{domain}"},
-  {"endpoint": "/tasks/{domain}"}
+  {"endpoint": "/tasks/{domain}"},
   {"endpoint": "/tasks/{domain}/*"}
 ]
