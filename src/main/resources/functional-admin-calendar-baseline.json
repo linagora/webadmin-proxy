@@ -6,7 +6,10 @@
   {"endpoint": "/addressbook/domain-members/{domain}"},
   {"endpoint": "/calendars/%@{domain}"},
   {"endpoint": "/calendars/%@{domain}/*"},
-  {"endpoint": "/tasks/*"},
-  {"endpoint": "/registeredUsers"},
-  {"endpoint": "/resources/*"}
+  {"endpoint": "/tasks/{domain}"},
+  {"endpoint": "/tasks/{domain}/*"},
+  {"endpoint": "/domains/{domain}/registeredUsers"},
+  {"endpoint": "/domains/{domain}/registeredUsers/*"},
+  {"endpoint": "/resources/{domain}"},
+  {"endpoint": "/resources/{domain}/*"}
 ]

@@ -194,15 +194,19 @@ public record WebAdminProxyConfiguration(int port,
         JsonNode allowedUrlsNode = clientNode.get("allowed.urls");
         if (allowedUrlsNode != null) {
             for (JsonNode urlNode : allowedUrlsNode) {
-                JsonNode includeNode = urlNode.get("include");
-                if (includeNode != null) {
-                    allowedUrls.addAll(loadIncludedAllowedUrls(includeNode.asText()));
-                } else {
-                    allowedUrls.add(parseSingleAllowedUrl(urlNode));
-                }
+                resolveUrlNode(urlNode, allowedUrls);
             }
         }
         return allowedUrls;
+    }
+
+    private static void resolveUrlNode(JsonNode urlNode, List<AllowedUrl> result) {
+        JsonNode includeNode = urlNode.get("include");
+        if (includeNode != null) {
+            result.addAll(loadIncludedAllowedUrls(includeNode.asText()));
+        } else {
+            result.add(parseSingleAllowedUrl(urlNode));
+        }
     }
 
     private static AllowedUrl parseSingleAllowedUrl(JsonNode urlNode) {
@@ -222,7 +226,7 @@ public record WebAdminProxyConfiguration(int port,
             JsonNode array = MAPPER.readTree(stream);
             List<AllowedUrl> result = new ArrayList<>();
             for (JsonNode urlNode : array) {
-                result.add(parseSingleAllowedUrl(urlNode));
+                resolveUrlNode(urlNode, result);
             }
             return result;
         } catch (IOException e) {
