@@ -1,5 +1,6 @@
 [
   {"denied":true, "verb":["POST"], "endpoint": "/users/{user}?action=deleteData"},
   {"denied": true, "verb":["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+  {"denied": true, "verb":["DELETE"], "endpoint": "/users/%@{domain}/*"},
   {"endpoint": "/*"}
 ]
