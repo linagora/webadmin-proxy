@@ -18,6 +18,7 @@
         {"denied": true, "verb": ["POST", "PUT", "PATCH", "DELETE"], "endpoint": "/quota/domains/{domain}/*"},
         {"endpoint": "/healthcheck"},
         {"endpoint": "/metrics"},
+        {"endpoint": "/tasks"},
         {"endpoint": "/tasks/*"},
         {"include": "classpath://functional-admin-mail-baseline.json"}
 ]
