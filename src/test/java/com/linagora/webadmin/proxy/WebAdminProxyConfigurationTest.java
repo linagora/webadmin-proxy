@@ -700,6 +700,68 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void shouldExpandMailSupportProfileIncludingBaselineEntries() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"include": "classpath://linagora-mail-support-profile.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            var endpoints = config.clientsForId("my-client").get(0).allowedUrls()
+                .stream().map(u -> u.endpointPattern()).toList();
+            assertThat(endpoints).contains("/tasks", "/tasks/*");
+            assertThat(endpoints).contains("/domains/{domain}", "/users/%@{domain}");
+            assertThat(endpoints).doesNotContain("classpath://functional-admin-mail-baseline.json");
+        }
+
+        @Test
+        void shouldExpandCalendarSupportProfileIncludingBaselineEntries() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          {"include": "classpath://linagora-calendar-support-profile.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """;
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            var endpoints = config.clientsForId("my-client").get(0).allowedUrls()
+                .stream().map(u -> u.endpointPattern()).toList();
+            assertThat(endpoints).contains("/tasks", "/tasks/*");
+            assertThat(endpoints).contains("/domains/{domain}", "/users/%@{domain}");
+            assertThat(endpoints).doesNotContain("classpath://functional-admin-calendar-baseline.json");
+        }
+
+        @Test
         void shouldExpandNestedIncludes() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(
                 writeConfigWithInclude("classpath://test-allowed-urls-fragment.json"));
