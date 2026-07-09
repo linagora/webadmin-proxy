@@ -1,4 +1,0 @@
-[
-  {"endpoint": "/healthcheck"},
-  {"include": "classpath://test-allowed-urls.json"}
-]
