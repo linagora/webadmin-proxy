@@ -1,0 +1,5 @@
+[
+  {"endpoint": "/domains/{domain}"},
+  {"verb": ["GET"], "endpoint": "/users/%@{domain}"},
+  {"denied": true, "endpoint": "/domains/{domain}/quota"}
+]

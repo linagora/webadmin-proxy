@@ -54,7 +54,7 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values. Tokens matching none of the configured audiences are rejected with 401 |
 | `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`) |
 | `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
-| `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added |
+| `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added. Preflight responses advertise `Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING` as allowed request headers |
 | `self.webadmin.enabled` | no | `true` to start the self-admin HTTP server. Defaults to `false` |
 | `self.webadmin.port` | no | Port for the self-admin server. Required when `self.webadmin.enabled` is `true`. Use `0` for a random port |
 | `clients` | yes | Ordered array of client configurations. Each element is a single-key object whose key is the OIDC `client_id`. Duplicate keys are allowed — the proxy picks the **first matching entry** for the authenticated user |
