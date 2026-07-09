@@ -2631,6 +2631,54 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void preflightShouldAllowIKnowWhatIMDoingHeader() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "POST")
+                .header("Access-Control-Request-Headers", "authorization,content-type,i-know-what-i-m-doing")
+            .when()
+                .options("/mailboxes?task=SolveInconsistencies")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("I-KNOW-WHAT-I-M-DOING"));
+        }
+
+        @Test
+        void preflightShouldAllowAuthorizationAndContentTypeHeaders() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "POST")
+            .when()
+                .options("/domains")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("Authorization"))
+                .header("Access-Control-Allow-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("Content-Type"));
+        }
+
+        @Test
+        void shouldForwardIKnowWhatIMDoingHeaderToBackend() {
+            MockServerClient backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+            backendMock.when(request().withMethod("POST").withPath("/mailboxes"))
+                .respond(response().withStatusCode(201));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+                .header("I-KNOW-WHAT-I-M-DOING", "ALL-SERVICES-ARE-OFFLINE")
+            .when()
+                .post("/mailboxes?task=SolveInconsistencies")
+            .then()
+                .statusCode(201);
+
+            backendMock.verify(request().withMethod("POST").withPath("/mailboxes")
+                .withHeader("I-KNOW-WHAT-I-M-DOING", "ALL-SERVICES-ARE-OFFLINE"));
+        }
+
+        @Test
         void shouldNotSetCorsHeadersWhenNotConfigured() throws Exception {
             WebAdminProxyGuiceServer noCorsServer = startProxy(List.of());
             try {
