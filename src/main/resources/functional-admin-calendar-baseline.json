@@ -18,5 +18,7 @@
   {"verb": ["GET"], "endpoint": "/mailingLists/%@lists.{domain}"},
   {"verb": ["GET"], "endpoint": "/mailingLists/%@{domain}"},
   {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@lists.{domain}/members/*"},
-  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@{domain}/members/*"}
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@{domain}/members/*"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@lists.{domain}/owners/*"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@{domain}/owners/*"}
 ]
