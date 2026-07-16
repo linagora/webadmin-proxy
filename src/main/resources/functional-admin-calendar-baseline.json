@@ -12,5 +12,13 @@
   {"endpoint": "/domains/{domain}/registeredUsers"},
   {"endpoint": "/domains/{domain}/registeredUsers/*"},
   {"endpoint": "/resources/{domain}"},
-  {"endpoint": "/resources/{domain}/*"}
+  {"endpoint": "/resources/{domain}/*"},
+  {"verb": ["GET"], "endpoint": "/mailingLists?domain=lists.{domain}"},
+  {"verb": ["GET"], "endpoint": "/mailingLists?domain={domain}"},
+  {"verb": ["GET"], "endpoint": "/mailingLists/%@lists.{domain}"},
+  {"verb": ["GET"], "endpoint": "/mailingLists/%@{domain}"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@lists.{domain}/members/*"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@{domain}/members/*"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@lists.{domain}/owners/*"},
+  {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/%@{domain}/owners/*"}
 ]
