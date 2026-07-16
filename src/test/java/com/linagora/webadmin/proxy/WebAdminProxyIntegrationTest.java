@@ -30,10 +30,13 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.io.TempDir;
 
 import com.linagora.webadmin.proxy.UrlPatternRestriction.Operator;
@@ -3175,11 +3178,13 @@ class WebAdminProxyIntegrationTest {
         }
     }
 
+    /**
+     * These profile tests only assert which requests the ACL lets through, and every stub is
+     * constant, so the servers are started once for the whole class rather than per test.
+     */
     @Nested
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     class CalendarBaselineProfile {
-
-        @TempDir
-        Path tempDir;
 
         private ClientAndServer oidcMockServer;
         private ClientAndServer backendMockServer;
@@ -3187,8 +3192,8 @@ class WebAdminProxyIntegrationTest {
         private MockServerClient backendMock;
         private WebAdminProxyGuiceServer proxyServer;
 
-        @BeforeEach
-        void setUp() throws Exception {
+        @BeforeAll
+        void setUp(@TempDir Path tempDir) throws Exception {
             oidcMockServer = ClientAndServer.startClientAndServer(0);
             backendMockServer = ClientAndServer.startClientAndServer(0);
             oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
@@ -3204,11 +3209,11 @@ class WebAdminProxyIntegrationTest {
                     .withBody("{\"email\":\"alice@example.com\"}"));
             backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
 
-            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig()));
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig(tempDir)));
             proxyServer.start();
         }
 
-        @AfterEach
+        @AfterAll
         void tearDown() {
             proxyServer.stop();
             oidcMockServer.stop();
@@ -3219,7 +3224,7 @@ class WebAdminProxyIntegrationTest {
          * Loads the shipped calendar baseline as an admin of example.com would get it: scoped to
          * their own domain through the {@code domain} pattern restriction.
          */
-        private WebAdminProxyConfiguration writeConfig() throws Exception {
+        private WebAdminProxyConfiguration writeConfig(Path tempDir) throws Exception {
             String json = """
                 {
                   "port": "0",
@@ -3355,10 +3360,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    @TestInstance(TestInstance.Lifecycle.PER_CLASS)
     class LinagoraCalendarSupportProfile {
-
-        @TempDir
-        Path tempDir;
 
         private ClientAndServer oidcMockServer;
         private ClientAndServer backendMockServer;
@@ -3366,8 +3369,8 @@ class WebAdminProxyIntegrationTest {
         private MockServerClient backendMock;
         private WebAdminProxyGuiceServer proxyServer;
 
-        @BeforeEach
-        void setUp() throws Exception {
+        @BeforeAll
+        void setUp(@TempDir Path tempDir) throws Exception {
             oidcMockServer = ClientAndServer.startClientAndServer(0);
             backendMockServer = ClientAndServer.startClientAndServer(0);
             oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
@@ -3383,11 +3386,11 @@ class WebAdminProxyIntegrationTest {
                     .withBody("{\"email\":\"support@linagora.com\"}"));
             backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
 
-            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig()));
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig(tempDir)));
             proxyServer.start();
         }
 
-        @AfterEach
+        @AfterAll
         void tearDown() {
             proxyServer.stop();
             oidcMockServer.stop();
@@ -3398,7 +3401,7 @@ class WebAdminProxyIntegrationTest {
          * Loads the shipped Linagora calendar support profile as it is deployed: cross-tenant, so
          * without any {@code url.patterns.restrictions}.
          */
-        private WebAdminProxyConfiguration writeConfig() throws Exception {
+        private WebAdminProxyConfiguration writeConfig(Path tempDir) throws Exception {
             String json = """
                 {
                   "port": "0",
