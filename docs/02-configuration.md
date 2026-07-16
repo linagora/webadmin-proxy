@@ -115,8 +115,14 @@ The proxy ships two ready-made baseline profiles on the classpath:
 
 | Profile | Description |
 |---------|-------------|
-| `classpath://functional-admin-calendar-baseline.json` | Standard Twake Calendar functional admin endpoints: domains, users, resources, address book, calendars, tasks |
+| `classpath://functional-admin-calendar-baseline.json` | Standard Twake Calendar functional admin endpoints: domains, users, resources, address book, calendars, tasks, mailing lists |
 | `classpath://functional-admin-mail-baseline.json` | Standard Twake Mail functional admin endpoints: domains, users, quotas, address aliases and forwards, mappings, vacation, deleted messages, tasks |
+
+The calendar baseline grants mailing lists read access and member management, restricted to
+lists of the admin's own tenant — matched as `xxx@lists.{domain}` or `xxx@{domain}`. Listing
+mailing lists is only allowed through the `?domain=` filter, since an unfiltered
+`GET /mailingLists` returns every tenant's lists. Creating or deleting a list, and managing its
+owners, are not part of the baseline.
 
 Example using a deny rule before the calendar baseline:
 
