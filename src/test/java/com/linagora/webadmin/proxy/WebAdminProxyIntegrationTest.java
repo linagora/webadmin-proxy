@@ -3317,8 +3317,16 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
-        void shouldReturn403WhenManagingOwnersOfMailingList() {
+        void shouldAllowManagingOwnersOfMailingListOfOwnDomain() {
             proxy().when().put("/mailingLists/sales@lists.example.com/owners/bob@example.com")
+                .then().statusCode(200);
+            proxy().when().delete("/mailingLists/sales@lists.example.com/owners/bob@example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenManagingOwnersOfMailingListOfAnotherDomain() {
+            proxy().when().put("/mailingLists/sales@lists.other.com/owners/bob@other.com")
                 .then().statusCode(403);
         }
 
@@ -3441,6 +3449,14 @@ class WebAdminProxyIntegrationTest {
             proxy().when().get("/mailingLists/sales@lists.other.com")
                 .then().statusCode(200);
             proxy().when().put("/mailingLists/sales@lists.other.com/members/bob@other.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowMailingListOwnerManagementAcrossDomains() {
+            proxy().when().put("/mailingLists/sales@lists.other.com/owners/bob@other.com")
+                .then().statusCode(200);
+            proxy().when().delete("/mailingLists/sales@lists.other.com/owners/bob@other.com")
                 .then().statusCode(200);
         }
 

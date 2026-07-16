@@ -664,10 +664,11 @@ class WebAdminProxyConfigurationTest {
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
             var urls = config.clientsForId("my-client").get(0).allowedUrls();
-            assertThat(urls).hasSize(20);
+            assertThat(urls).hasSize(22);
             assertThat(urls.stream().map(u -> u.endpointPattern()))
                 .contains("/domains/{domain}", "/calendars/%@{domain}", "/tasks/{domain}/*",
-                    "/mailingLists/%@lists.{domain}", "/mailingLists/%@lists.{domain}/members/*");
+                    "/mailingLists/%@lists.{domain}", "/mailingLists/%@lists.{domain}/members/*",
+                    "/mailingLists/%@lists.{domain}/owners/*");
         }
 
         @Test
