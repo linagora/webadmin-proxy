@@ -34,6 +34,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.linagora.webadmin.proxy.UrlPatternRestriction.Operator;
 import org.mockserver.client.MockServerClient;
@@ -3171,6 +3172,299 @@ class WebAdminProxyIntegrationTest {
 
             backendMock1.verify(request().withPath("/domains"), VerificationTimes.once());
             backendMock2.verify(request().withPath("/domains"), VerificationTimes.exactly(0));
+        }
+    }
+
+    @Nested
+    class CalendarBaselineProfile {
+
+        @TempDir
+        Path tempDir;
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"alice@example.com\"}"));
+            backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
+
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig()));
+            proxyServer.start();
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        /**
+         * Loads the shipped calendar baseline as an admin of example.com would get it: scoped to
+         * their own domain through the {@code domain} pattern restriction.
+         */
+        private WebAdminProxyConfiguration writeConfig() throws Exception {
+            String json = """
+                {
+                  "port": "0",
+                  "oidc.userInfo.url": "http://localhost:%d/userinfo",
+                  "oidc.introspect.url": "http://localhost:%d/introspect",
+                  "oidc.audience": "%s",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "%s": {
+                        "webadmin.backend": "http://localhost:%d",
+                        "webadmin.token": "%s",
+                        "url.patterns.restrictions": {
+                          "domain": {"backing.claim": "email", "operator": "HAS_DOMAIN"}
+                        },
+                        "allowed.urls": [
+                          {"include": "classpath://functional-admin-calendar-baseline.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(oidcMockServer.getLocalPort(), oidcMockServer.getLocalPort(), AUDIENCE,
+                    CLIENT_ID, backendMockServer.getLocalPort(), WEBADMIN_TOKEN);
+            Path configFile = tempDir.resolve("configuration.json");
+            Files.writeString(configFile, json, StandardCharsets.UTF_8);
+            return WebAdminProxyConfiguration.from(configFile.toFile());
+        }
+
+        private io.restassured.specification.RequestSpecification proxy() {
+            return given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN);
+        }
+
+        @Test
+        void shouldAllowListingMailingListsOfOwnDomain() {
+            proxy().when().get("/mailingLists?domain=lists.example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowListingMailingListsOfOwnDomainWithoutListsPrefix() {
+            proxy().when().get("/mailingLists?domain=example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenListingMailingListsOfAnotherDomain() {
+            proxy().when().get("/mailingLists?domain=lists.other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenListingMailingListsWithoutDomainFilter() {
+            proxy().when().get("/mailingLists")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowReadingMailingListOfOwnDomain() {
+            proxy().when().get("/mailingLists/sales@lists.example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenReadingMailingListOfAnotherDomain() {
+            proxy().when().get("/mailingLists/sales@lists.other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowManagingMembersOfMailingListOfOwnDomain() {
+            proxy().when().put("/mailingLists/sales@lists.example.com/members/bob@example.com")
+                .then().statusCode(200);
+            proxy().when().delete("/mailingLists/sales@lists.example.com/members/bob@example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenManagingMembersOfMailingListOfAnotherDomain() {
+            proxy().when().put("/mailingLists/sales@lists.other.com/members/bob@other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenCreatingMailingList() {
+            proxy().when().put("/mailingLists/sales@lists.example.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenManagingOwnersOfMailingList() {
+            proxy().when().put("/mailingLists/sales@lists.example.com/owners/bob@example.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowTeamCalendarManagementOfOwnDomain() {
+            proxy().when().get("/domains/example.com/team-calendars")
+                .then().statusCode(200);
+            proxy().when().post("/domains/example.com/team-calendars/64f1c2/members/invitee")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenManagingTeamCalendarsOfAnotherDomain() {
+            proxy().when().get("/domains/other.com/team-calendars")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowAddressBookManagementOfOwnDomain() {
+            proxy().when().get("/users/bob@example.com/addressbooks")
+                .then().statusCode(200);
+            proxy().when().delete("/users/bob@example.com/addressbooks/0e26ee47")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowBookingLinkManagementOfOwnDomain() {
+            proxy().when().get("/users/bob@example.com/booking-links")
+                .then().statusCode(200);
+            proxy().when().delete("/users/bob@example.com/booking-links/64f1c2")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenManagingBookingLinksOfAnotherDomain() {
+            proxy().when().get("/users/bob@other.com/booking-links")
+                .then().statusCode(403);
+        }
+    }
+
+    @Nested
+    class LinagoraCalendarSupportProfile {
+
+        @TempDir
+        Path tempDir;
+
+        private ClientAndServer oidcMockServer;
+        private ClientAndServer backendMockServer;
+        private MockServerClient oidcMock;
+        private MockServerClient backendMock;
+        private WebAdminProxyGuiceServer proxyServer;
+
+        @BeforeEach
+        void setUp() throws Exception {
+            oidcMockServer = ClientAndServer.startClientAndServer(0);
+            backendMockServer = ClientAndServer.startClientAndServer(0);
+            oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"support@linagora.com\"}"));
+            backendMock.when(request()).respond(response().withStatusCode(200).withBody("[]"));
+
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(writeConfig()));
+            proxyServer.start();
+        }
+
+        @AfterEach
+        void tearDown() {
+            proxyServer.stop();
+            oidcMockServer.stop();
+            backendMockServer.stop();
+        }
+
+        /**
+         * Loads the shipped Linagora calendar support profile as it is deployed: cross-tenant, so
+         * without any {@code url.patterns.restrictions}.
+         */
+        private WebAdminProxyConfiguration writeConfig() throws Exception {
+            String json = """
+                {
+                  "port": "0",
+                  "oidc.userInfo.url": "http://localhost:%d/userinfo",
+                  "oidc.introspect.url": "http://localhost:%d/introspect",
+                  "oidc.audience": "%s",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "%s": {
+                        "webadmin.backend": "http://localhost:%d",
+                        "webadmin.token": "%s",
+                        "allowed.urls": [
+                          {"include": "classpath://linagora-calendar-support-profile.json"}
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(oidcMockServer.getLocalPort(), oidcMockServer.getLocalPort(), AUDIENCE,
+                    CLIENT_ID, backendMockServer.getLocalPort(), WEBADMIN_TOKEN);
+            Path configFile = tempDir.resolve("configuration.json");
+            Files.writeString(configFile, json, StandardCharsets.UTF_8);
+            return WebAdminProxyConfiguration.from(configFile.toFile());
+        }
+
+        private io.restassured.specification.RequestSpecification proxy() {
+            return given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN);
+        }
+
+        @Test
+        void shouldAllowMailingListReadAndMemberManagementAcrossDomains() {
+            proxy().when().get("/mailingLists")
+                .then().statusCode(200);
+            proxy().when().get("/mailingLists/sales@lists.other.com")
+                .then().statusCode(200);
+            proxy().when().put("/mailingLists/sales@lists.other.com/members/bob@other.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowDeletingAddressBook() {
+            proxy().when().delete("/users/bob@example.com/addressbooks/0e26ee47")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowDeletingBookingLink() {
+            proxy().when().delete("/users/bob@example.com/booking-links/64f1c2")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldStillDenyDeletingOtherUserSubResources() {
+            proxy().when().delete("/users/bob@example.com/mailboxes")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowTeamCalendarManagement() {
+            proxy().when().get("/domains/example.com/team-calendars")
+                .then().statusCode(200);
+            proxy().when().delete("/domains/example.com/team-calendars/64f1c2")
+                .then().statusCode(200);
         }
     }
 }

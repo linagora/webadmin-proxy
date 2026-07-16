@@ -465,6 +465,79 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class MailingListPatterns {
+
+        @Test
+        void listsSubDomainPatternShouldCaptureTenantDomain() {
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists/%@lists.{domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/mailingLists/sales@lists.linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "linagora.com");
+        }
+
+        @Test
+        void flatDomainPatternShouldCaptureTenantDomain() {
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists/%@{domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/mailingLists/sales@linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "linagora.com");
+        }
+
+        @Test
+        void flatDomainPatternShouldCaptureWholeListsSubDomain() {
+            // Ensures a lists.* address is never mistaken for a tenant domain: the restriction
+            // on {domain} then rejects it, which is why the lists.{domain} rule must come first.
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists/%@{domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/mailingLists/sales@lists.linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "lists.linagora.com");
+        }
+
+        @Test
+        void listsSubDomainPatternShouldNotMatchAnotherTenant() {
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists/%@lists.{domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/mailingLists/sales@lists.other.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "other.com");
+        }
+
+        @Test
+        void memberPatternShouldCaptureListDomainRatherThanMemberDomain() {
+            AllowedUrl rule = new AllowedUrl(List.of("PUT", "DELETE"), "/mailingLists/%@lists.{domain}/members/*");
+            Optional<Map<String, String>> result = rule.match("PUT",
+                "/mailingLists/sales@lists.linagora.com/members/bob@linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "linagora.com");
+        }
+
+        @Test
+        void memberPatternShouldNotMatchOwnerManagement() {
+            AllowedUrl rule = new AllowedUrl(List.of("PUT", "DELETE"), "/mailingLists/%@lists.{domain}/members/*");
+            assertThat(rule.matches("PUT", "/mailingLists/sales@lists.linagora.com/owners/bob@linagora.com")).isFalse();
+        }
+
+        @Test
+        void memberPatternShouldNotMatchListDeletion() {
+            AllowedUrl rule = new AllowedUrl(List.of("PUT", "DELETE"), "/mailingLists/%@lists.{domain}/members/*");
+            assertThat(rule.matches("DELETE", "/mailingLists/sales@lists.linagora.com")).isFalse();
+        }
+
+        @Test
+        void domainQueryParamPatternShouldCaptureTenantDomain() {
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists?domain=lists.{domain}");
+            Optional<Map<String, String>> result = rule.match("GET", "/mailingLists?domain=lists.linagora.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "linagora.com");
+        }
+
+        @Test
+        void domainQueryParamPatternShouldNotMatchUnfilteredListing() {
+            AllowedUrl rule = new AllowedUrl(List.of("GET"), "/mailingLists?domain={domain}");
+            assertThat(rule.matches("GET", "/mailingLists")).isFalse();
+        }
+    }
+
+    @Nested
     class DeniedFlag {
 
         @Test
