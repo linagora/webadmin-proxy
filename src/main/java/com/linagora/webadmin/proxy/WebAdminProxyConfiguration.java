@@ -200,9 +200,13 @@ public record WebAdminProxyConfiguration(int port,
         return allowedUrls;
     }
 
+    private static final List<String> ENDPOINT_RULE_KEYS = List.of("endpoint", "verb", "verbs", "denied");
+    private static final List<String> INCLUDE_RULE_KEYS = List.of("include");
+
     private static void resolveUrlNode(JsonNode urlNode, List<AllowedUrl> result) {
         JsonNode includeNode = urlNode.get("include");
         if (includeNode != null) {
+            rejectUnknownKeys(urlNode, INCLUDE_RULE_KEYS);
             result.addAll(loadIncludedAllowedUrls(includeNode.asText()));
         } else {
             result.add(parseSingleAllowedUrl(urlNode));
@@ -210,15 +214,56 @@ public record WebAdminProxyConfiguration(int port,
     }
 
     private static AllowedUrl parseSingleAllowedUrl(JsonNode urlNode) {
+        rejectUnknownKeys(urlNode, ENDPOINT_RULE_KEYS);
+        JsonNode endpointNode = urlNode.get("endpoint");
+        if (endpointNode == null) {
+            throw new IllegalArgumentException("Invalid allowed.urls rule " + urlNode + ": missing required field 'endpoint'");
+        }
         List<String> verbs = new ArrayList<>();
-        JsonNode verbsNode = urlNode.get("verb");
+        JsonNode verbsNode = verbNode(urlNode);
         if (verbsNode != null) {
             verbsNode.forEach(v -> verbs.add(v.asText()));
         }
         boolean denied = Optional.ofNullable(urlNode.get("denied"))
             .map(JsonNode::asBoolean)
             .orElse(false);
-        return new AllowedUrl(verbs, urlNode.get("endpoint").asText(), denied);
+        return new AllowedUrl(verbs, endpointNode.asText(), denied);
+    }
+
+    /**
+     * {@code verbs} is a tolerated alias for the canonical {@code verb}. It used to be ignored, which
+     * silently turned such a rule into an all-verbs rule; honouring it makes the rule mean what it reads as.
+     */
+    private static JsonNode verbNode(JsonNode urlNode) {
+        JsonNode verb = urlNode.get("verb");
+        JsonNode verbsAlias = urlNode.get("verbs");
+        if (verb != null && verbsAlias != null) {
+            throw new IllegalArgumentException("Invalid allowed.urls rule " + urlNode
+                + ": 'verb' and its alias 'verbs' cannot both be set. Keep 'verb'.");
+        }
+        if (verbsAlias != null) {
+            LOGGER.warn("allowed.urls rule {} uses the deprecated field 'verbs'; prefer the canonical 'verb'", urlNode);
+            return verbsAlias;
+        }
+        return verb;
+    }
+
+    /**
+     * Any other unrecognized key in a rule is a mistake that widens the rule — an unread key imposes no
+     * constraint. Fail at startup rather than silently granting more than the profile reads as granting.
+     */
+    private static void rejectUnknownKeys(JsonNode urlNode, List<String> knownKeys) {
+        List<String> unknown = new ArrayList<>();
+        urlNode.fieldNames().forEachRemaining(name -> {
+            if (!knownKeys.contains(name)) {
+                unknown.add(name);
+            }
+        });
+        if (!unknown.isEmpty()) {
+            List<String> documentedKeys = knownKeys.stream().filter(key -> !key.equals("verbs")).toList();
+            throw new IllegalArgumentException("Invalid allowed.urls rule " + urlNode + ": unknown field(s) " + unknown
+                + ". Supported fields are " + documentedKeys + ".");
+        }
     }
 
     private static List<AllowedUrl> loadIncludedAllowedUrls(String includeUri) {

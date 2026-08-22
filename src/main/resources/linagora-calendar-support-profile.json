@@ -11,6 +11,6 @@
         {"verb": ["GET"], "endpoint": "/mailingLists"},
         {"verb": ["GET"], "endpoint": "/mailingLists/*"},
         {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/*/members/*"},
-        {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/*/owner/*"},
+        {"verb": ["PUT", "DELETE"], "endpoint": "/mailingLists/*/owners/*"},
         {"include": "classpath://functional-admin-calendar-baseline.json"}
 ]

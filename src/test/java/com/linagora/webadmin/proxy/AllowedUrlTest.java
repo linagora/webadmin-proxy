@@ -298,6 +298,39 @@ class AllowedUrlTest {
             AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users?domain={domain}");
             assertThat(rule.matches("GET", "/domains/example.com/users?domain=other.com")).isFalse();
         }
+
+        // --- Flag-style parameters ---
+
+        @Test
+        void valuelessQueryParamPatternShouldBeRejected() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("hasSpecificQuota");
+        }
+
+        @Test
+        void valuelessQueryParamPatternShouldBeRejectedAmongValuedOnes() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/messages?user={user}&useSavedDate"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("useSavedDate");
+        }
+
+        @Test
+        void emptyValuePatternShouldRequireFlagParamPresent() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota=");
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users")).isFalse();
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=true")).isFalse();
+        }
+
+        @Test
+        void starValuePatternShouldRequireFlagParamPresentWithAnyValue() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota=*");
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=true")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users")).isFalse();
+        }
     }
 
     @Nested
