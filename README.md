@@ -2,6 +2,8 @@
 
 A security proxy for [Apache James](https://james.apache.org/) WebAdmin API, adding OIDC authentication and fine-grained per-client access control.
 
+> 💡 **Don't hand-write `allowed.urls`.** The [profile editor](https://github.com/linagora/twake-mail-admin/tree/main/profile-editor) builds a profile by asking what an administrator should be able to do — and audits profiles you already have.
+
 ## Why?
 
 Apache James WebAdmin uses static bearer tokens and exposes some unauthenticated technical endpoints. It cannot be opened to the internet as-is and has no concept of users or per-operation access control.
