@@ -445,6 +445,85 @@ class WebAdminProxyConfigurationTest {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
             assertThat(config.clientsForId("my-client").get(0).allowedUrls()).hasSize(2);
         }
+
+        private String withRule(String rule) {
+            return """
+                {
+                  "port": "8001",
+                  "oidc.userInfo.url": "http://lemonldap/userinfo",
+                  "oidc.introspect.url": "http://lemonldap/introspect",
+                  "oidc.audience": "webadmin-proxy",
+                  "oidc.claim.authenticated.user": "email",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": [
+                    {
+                      "my-client": {
+                        "webadmin.backend": "http://james:8000",
+                        "webadmin.token": "secret",
+                        "allowed.urls": [
+                          %s
+                        ]
+                      }
+                    }
+                  ]
+                }
+                """.formatted(rule);
+        }
+
+        @Test
+        void verbsAliasShouldRestrictVerbsLikeVerb() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(withRule("""
+                { "denied": true, "verbs": ["DELETE"], "endpoint": "/domains/{domain}/aliases" }""")));
+            AllowedUrl rule = config.clientsForId("my-client").get(0).allowedUrls().get(0);
+            assertThat(rule.verbs()).containsExactly("DELETE");
+            assertThat(rule.matches("DELETE", "/domains/example.com/aliases")).isTrue();
+            assertThat(rule.matches("GET", "/domains/example.com/aliases")).isFalse();
+        }
+
+        @Test
+        void verbAndVerbsAliasTogetherShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verb": ["GET"], "verbs": ["DELETE"], "endpoint": "/domains/{domain}/aliases" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("verbs");
+        }
+
+        @Test
+        void unknownFieldShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "method": ["DELETE"], "endpoint": "/domains/{domain}/aliases" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("method");
+        }
+
+        @Test
+        void unknownFieldOnIncludeShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "include": "classpath://test-allowed-urls.json", "endpoint": "/users" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("endpoint");
+        }
+
+        @Test
+        void ruleWithoutEndpointShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verb": ["GET"] }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("endpoint");
+        }
+
+        @Test
+        void valuelessQueryParameterShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verb": ["GET"], "endpoint": "/quota/users?hasSpecificQuota" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("hasSpecificQuota");
+        }
     }
 
     @Nested

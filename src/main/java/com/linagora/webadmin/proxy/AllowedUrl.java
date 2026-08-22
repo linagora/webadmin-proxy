@@ -50,7 +50,7 @@ public class AllowedUrl {
         List<String> names = new ArrayList<>();
         this.compiledPathPattern = Pattern.compile(toPathRegex(pathPart, names));
         this.pathVariableNames = List.copyOf(names);
-        this.compiledQueryParams = parseQueryPattern(queryPart);
+        this.compiledQueryParams = parseQueryPattern(queryPart, endpointPattern);
     }
 
     public List<String> verbs() {
@@ -118,20 +118,24 @@ public class AllowedUrl {
         return match(method, fullUri).isPresent();
     }
 
-    private static Map<String, CompiledQueryParam> parseQueryPattern(String queryPart) {
+    private static Map<String, CompiledQueryParam> parseQueryPattern(String queryPart, String endpointPattern) {
         if (queryPart.isEmpty()) {
             return Map.of();
         }
         Map<String, CompiledQueryParam> result = new HashMap<>();
         for (String param : queryPart.split("&")) {
             int eq = param.indexOf('=');
-            if (eq >= 0) {
-                String paramName = param.substring(0, eq);
-                String valuePattern = param.substring(eq + 1);
-                List<String> varNames = new ArrayList<>();
-                Pattern compiled = Pattern.compile(toPathRegex(valuePattern, varNames));
-                result.put(paramName, new CompiledQueryParam(compiled, List.copyOf(varNames)));
+            if (eq < 0) {
+                throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern + "': query parameter '"
+                    + param + "' has no '='. A parameter without a value pattern would impose no constraint at all. "
+                    + "Write '" + param + "=' to require a flag-style parameter (present, empty or valueless), "
+                    + "or '" + param + "=*' to require it with any value.");
             }
+            String paramName = param.substring(0, eq);
+            String valuePattern = param.substring(eq + 1);
+            List<String> varNames = new ArrayList<>();
+            Pattern compiled = Pattern.compile(toPathRegex(valuePattern, varNames));
+            result.put(paramName, new CompiledQueryParam(compiled, List.copyOf(varNames)));
         }
         return Map.copyOf(result);
     }

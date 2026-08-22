@@ -82,7 +82,7 @@ This makes it easy to carve out exceptions from a broad wildcard without enumera
 ```json
 "allowed.urls": [
   {"denied": true, "endpoint": "/domains/{domain}/quota"},
-  {"denied": true, "verbs": ["DELETE"], "endpoint": "/domains/{domain}/aliases"},
+  {"denied": true, "verb": ["DELETE"], "endpoint": "/domains/{domain}/aliases"},
   {"endpoint": "/domains/{domain}/*"}
 ]
 ```
@@ -96,6 +96,15 @@ Each rule is either a regular endpoint rule or an include directive:
 | `endpoint` | yes | Endpoint pattern (see pattern syntax below) |
 | `verb` | no | List of HTTP verbs this rule applies to (e.g. `["GET", "PUT"]`). If omitted, the rule matches all verbs |
 | `denied` | no | `true` to explicitly deny matching requests with 403. Defaults to `false` |
+
+The field is `verb`, singular. `verbs` is accepted as a deprecated alias and behaves identically; a
+warning is logged. Setting both in the same rule is a startup error.
+
+**Any other field name is a startup error.** This is deliberate: an unread field imposes no
+constraint, so a typo does not narrow a rule, it *widens* it. A rule spelled `"method": ["DELETE"]`
+would apply to every verb while reading as if it applied only to `DELETE` — the proxy refuses to
+start rather than grant more than the profile appears to grant. The same check applies to `include`
+directives, which accept no other field.
 
 **Include directive:**
 
@@ -111,39 +120,22 @@ Include URIs use the following schemes:
 | `file://relative/path` | Path relative to the current working directory |
 | `file:///absolute/path` | Absolute filesystem path |
 
-The proxy ships two ready-made baseline profiles on the classpath:
-
-| Profile | Description |
-|---------|-------------|
-| `classpath://functional-admin-calendar-baseline.json` | Standard Twake Calendar functional admin endpoints: domains, users, resources, address book, calendars, tasks, mailing lists |
-| `classpath://functional-admin-mail-baseline.json` | Standard Twake Mail functional admin endpoints: domains, users, quotas, address aliases and forwards, mappings, vacation, deleted messages, tasks |
-
-The calendar baseline grants mailing lists read access, member management and owner management,
-restricted to lists of the admin's own tenant — matched as `xxx@lists.{domain}` or `xxx@{domain}`.
-Listing mailing lists is only allowed through the `?domain=` filter, since an unfiltered
-`GET /mailingLists` returns every tenant's lists. Creating or deleting a list is not part of the
-baseline.
-
-Example using a deny rule before the calendar baseline:
-
-```json
-"allowed.urls": [
-  {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
-  {"include": "classpath://functional-admin-calendar-baseline.json"}
-]
-```
+Six ready-made profiles ship on the classpath — see [Shipped profiles](#shipped-profiles).
 
 ### Endpoint pattern syntax
+
+A pattern is a path, optionally followed by `?` and a query pattern. Both halves are matched
+independently; the path half is matched against the URL-decoded request path.
 
 | Token | Meaning |
 |-------|---------|
 | `{varname}` | Captures exactly one path segment (no `/`). The captured value is available to `url.patterns.restrictions` |
 | `%` | Matches the local part of an email address (no `@`, no `/`). Pure consumer — no named capture |
-| `*` | Matches any remaining characters, including `/` |
-| `?param={varname}` | Captures a query parameter value into a named variable |
-| `?param=value` | Requires query parameter to equal a literal value |
-
-Extra query parameters in the request are ignored. All listed query parameters must be present.
+| `*` | Matches any remaining characters, including `/`, and including none |
+| `?param={varname}` | Requires the parameter, captures its value into a named variable |
+| `?param=value` | Requires the parameter to equal a literal value |
+| `?param=*` | Requires the parameter, accepts any value including an empty one |
+| `?param=` | Requires the parameter to be present and valueless — matches `?param` and `?param=` |
 
 Examples:
 - `/users` — exact path
@@ -151,6 +143,45 @@ Examples:
 - `/users/%@{domain}/mailboxes` — email address user, domain captured
 - `/domains/{domain}/aliases/*` — any sub-path under aliases
 - `/quota?scope={scope}` — captures a query parameter
+
+`*` matches the empty string but not a missing separator: `/tasks/*` matches `/tasks/` and
+`/tasks/abc` but **not** `/tasks`. Profiles that mean "the collection and everything under it" list
+both, as `{"endpoint": "/tasks"}, {"endpoint": "/tasks/*"}`.
+
+The same variable name may appear in both halves (`/domains/{domain}/users?domain={domain}`); the
+rule then matches only if both occurrences capture the same value.
+
+#### Query string matching
+
+The query half is matched by **presence and value, per listed parameter**:
+
+- Every parameter listed in the pattern must be present in the request. A pattern parameter the
+  request does not carry means no match.
+- Parameters the request carries but the pattern does not list are **ignored**. `?domain={domain}`
+  matches `?domain=a.com&limit=10`.
+- Order is irrelevant: `?a=1&b=2` matches `?b=2&a=1`.
+- Request parameter values are URL-decoded before comparison.
+- A pattern with **no** query half imposes no query constraint at all — `/mappings/sources/%@{domain}`
+  matches `GET /mappings/sources/bob@d.com?type=alias`. This is the usual way to allow an endpoint
+  regardless of its filters.
+
+**Flag-style parameters.** James has endpoints selected by a valueless parameter — `?hasSpecificQuota`,
+`?reload-certificate`. Write these as `?hasSpecificQuota=`, not `?hasSpecificQuota`: a request
+parameter with no `=` is read as having an empty value, and the empty value pattern matches it. A
+pattern parameter with no `=` is **rejected at startup**, because it could only ever mean "no
+constraint" — the rule would collapse to the bare path and match any query string, which is the
+opposite of what "all listed parameters must be present" leads a reader to expect. Prior versions
+dropped such parameters silently.
+
+Against a request carrying `?flag`, `?flag=`, `?flag=true`, or no `flag` at all:
+
+| Pattern | `?flag` | `?flag=` | `?flag=true` | no `flag` |
+|---------|:-------:|:--------:|:------------:|:---------:|
+| `?flag=` | match | match | — | — |
+| `?flag=*` | match | match | match | — |
+| `?flag=true` | — | — | match | — |
+| *(no query half)* | match | match | match | match |
+| `?flag` | *rejected at startup* | | | |
 
 ### url.patterns.restrictions
 
@@ -167,6 +198,215 @@ Operators:
 |----------|-------------|
 | `EQUALS` | The claim value must exactly equal the URL variable value |
 | `HAS_DOMAIN` | The claim value is parsed as an email address; its domain part must equal the URL variable value. Useful with the `email` claim |
+
+A restriction is checked only when the rule that matched actually captured that variable. A rule that
+does not name it — `/*`, `/users`, `/mailingLists/*` — passes the restriction unexamined, so
+restrictions narrow rules, they do not constrain a profile as a whole. See
+[Baselines are tenant-scoped only if you scope them](#baselines-are-tenant-scoped-only-if-you-scope-them).
+
+## Shipped profiles
+
+Six profiles ship on the classpath. They fall into two families, and the distinction matters:
+
+| Profile | Family | Intended holder |
+|---------|--------|-----------------|
+| `classpath://functional-admin-mail-baseline.json` | baseline | Twake Mail tenant (domain) admin |
+| `classpath://functional-admin-calendar-baseline.json` | baseline | Twake Calendar tenant (domain) admin |
+| `classpath://linagora-mail-admin-profile.json` | complete | Linagora platform operator, Twake Mail |
+| `classpath://linagora-calendar-admin-profile.json` | complete | Linagora platform operator, Twake Calendar |
+| `classpath://linagora-mail-support-profile.json` | complete | Linagora support agent, Twake Mail |
+| `classpath://linagora-calendar-support-profile.json` | complete | Linagora support agent, Twake Calendar |
+
+**Baselines** are data-plane fragments. Every rule is anchored on a `{domain}` variable, they contain
+no deny rules and no platform-wide endpoints, and they are meant to be included after your own deny
+rules — not used alone. See [Baselines are tenant-scoped only if you scope them](#baselines-are-tenant-scoped-only-if-you-scope-them)
+and [Baselines alone leave the frontend sidebar empty](#baselines-alone-leave-the-frontend-sidebar-empty)
+before shipping one.
+
+**Complete profiles** are Linagora's own production ACLs. They are self-contained (the support ones
+include the matching baseline as their last entry) and usable as-is, but they encode Linagora's
+policy — read the "withholds" column before adopting one unchanged, and prefer copying the file into
+your own configuration if you need to diverge, since classpath profiles change with the proxy version.
+
+### functional-admin-mail-baseline.json
+
+**Grants**, all scoped to one `{domain}`: the domain itself and everything below it
+(`/domains/{domain}`, `/domains/{domain}/*` — aliases, team mailboxes, rate limits, contacts,
+signature templates…); users of that domain and all their sub-resources (`/users/%@{domain}`,
+`/users/%@{domain}/*` — mailboxes, identities, labels, delegation, JMAP settings…); user and domain
+quotas; address aliases and forwards; the user's mapping sources; vacation; deleted-message vault;
+team-mailbox membership; message search by user (`/messages?user=%@{domain}`); per-domain quota
+listing (`/quota/users?domain={domain}`); IMAP/network channels; and per-domain tasks
+(`/tasks/{domain}`, `/tasks/{domain}/*`).
+
+**Withholds**: every unscoped endpoint. No `/domains`, `/users`, `/healthcheck`, `/metrics`,
+`/mailRepositories`, `/mappings`, `/mailingLists`, `/events`, `/cassandra`, `/servers`, no bare
+`/tasks`, no global `/quota`. It also does not grant `/mappings/user/{username}` — only
+`/mappings/sources/…` — so the frontend's user Mappings tab, which gates on the former, stays hidden.
+
+**Use as**: a starting point, combined with deny rules, entry-point reads, and a `domain` restriction.
+
+### functional-admin-calendar-baseline.json
+
+**Grants**, all scoped to one `{domain}`: the domain and everything below it; users of the domain and
+their sub-resources (calendars, address books, booking links); registered users
+(`/domains/{domain}/registeredUsers`); resources, both as `/resources?domain={domain}` and
+`/resources/{domain}(/*)`; domain-member address book sync (`/addressbook/domain-members/{domain}`);
+calendars of the domain's users (`/calendars/%@{domain}(/*)`); per-domain tasks; and mailing lists —
+read (`GET /mailingLists/%@lists.{domain}` and `%@{domain}`) plus member and owner management
+(`PUT`/`DELETE` on `/members/*` and `/owners/*`) for lists of the admin's own tenant.
+
+**Withholds**: creating or deleting a mailing list (no `PUT`/`DELETE` on `/mailingLists/{address}`
+itself); unfiltered `GET /mailingLists`, which would return every tenant's lists — listing is allowed
+only through the `?domain=` filter; and, as with the mail baseline, every unscoped endpoint.
+
+**Use as**: a starting point, same caveats as the mail baseline.
+
+Example — deny rules first, then the baseline:
+
+```json
+"allowed.urls": [
+  {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+  {"include": "classpath://functional-admin-calendar-baseline.json"}
+]
+```
+
+### linagora-mail-admin-profile.json
+
+Twake Mail platform operator. Enumerates the endpoints it allows rather than using a catch-all.
+
+**Grants**: platform-wide reads and operations — `/healthcheck`, `/metrics`, `/mailRepositories`,
+`/events`, `/tasks`, `/cassandra`, `/mappings`, `/servers/channels`, `/quota`, `/reports/*`,
+`/jmap/settings`; `GET /users` and `GET /domains`; user administration (`GET`/`PUT`/`POST`/`PATCH` on
+`/users/*`); domain administration including team mailboxes, extra ACLs and extra senders
+(`GET`/`PUT`/`POST`/`PATCH` on `/domains/{domain}/*`); vault restore (`POST /deletedMessages/users`);
+mailbox and message creation; Trash/Spam cleanup (`DELETE /messages?mailbox=Trash`, `…=Spam`).
+
+**Withholds** — the leading deny rules, which win because rules are evaluated in order: destructive
+data wipes (`POST /users/{user}?action=deleteData`, `POST /domains/{domain}?action=deleteData`), user
+rename, and any write to domain contacts, domain aliases, or user delegation (`authorizedUsers`) —
+those three are read-only, `GET` is granted separately. Note that `DELETE` is absent from every
+`/users/*` and `/domains/{domain}/*` allow rule, so deletions fall through to no match and are
+refused.
+
+**Use as-is**: yes, for a Linagora-operated deployment.
+
+### linagora-calendar-admin-profile.json
+
+Twake Calendar platform operator. Deliberately the opposite shape: a `{"endpoint": "/*"}` catch-all
+at the end, carved out by the rules above it.
+
+**Grants**: everything on the backend, plus explicit `DELETE` on user address books and booking links.
+
+**Withholds**: `POST /users/{user}?action=deleteData` and `POST /domains/{domain}?action=deleteData`,
+and every other `DELETE` under `/users/%@{domain}/*` — the two explicit `DELETE` allows sit before
+that deny, so address books and booking links remain deletable while calendars and the rest do not.
+
+**Use as-is**: only if a full-access operator profile is what you want. The trailing `/*` grants
+every current and future James endpoint, and because it captures no variables it is also invisible to
+`url.patterns.restrictions` (see below). Anything you need to withhold must be denied above it.
+
+### linagora-mail-support-profile.json
+
+Twake Mail support agent: read the platform, act only within a tenant.
+
+**Grants**: platform-wide *reads* — `GET` on `/domains`, `/users`, `/mailRepositories`,
+`/events/deadLetter/groups`, `/quota`, `/mappings`, `/servers/channels`, `/cassandra/version`,
+`/jmap/settings/reports`, `/mailboxes/{mailboxId}` — plus `/healthcheck`, `/metrics` and `/tasks`.
+Everything a support agent may *change* comes from the trailing
+`{"include": "classpath://functional-admin-mail-baseline.json"}`, i.e. is tenant-scoped.
+
+**Withholds**: the mail admin profile's deny list, plus destructive operations a support agent must
+never perform even inside a tenant — deleting a user's mailboxes, deleting team mailboxes or their
+folders, changing domain rate limits, renaming users, and any write to domain quotas.
+
+**Use as-is**: yes. Pair it with a `domain` restriction only if support agents are themselves
+tenant-bound; a Linagora support agent normally is not, and the included baseline then grants the
+tenant-scoped writes across all tenants.
+
+### linagora-calendar-support-profile.json
+
+Twake Calendar support agent. Same shape: platform reads (`/healthcheck`, `/metrics`, `/tasks`,
+`/tasks/*`), cross-tenant mailing list read and member/owner management (`/mailingLists`,
+`/mailingLists/*`, `PUT`/`DELETE` on `/mailingLists/*/members/*` and `/mailingLists/*/owners/*`), the
+same address-book and booking-link `DELETE` carve-outs as the calendar admin profile, and then
+`{"include": "classpath://functional-admin-calendar-baseline.json"}`.
+
+**Withholds**: the two `action=deleteData` wipes, and every other `DELETE` under
+`/users/%@{domain}/*`.
+
+**Use as-is**: yes.
+
+### Baselines are tenant-scoped only if you scope them
+
+A baseline's `{domain}` is a *capture*, not a constraint. On its own, `/domains/{domain}/*` matches
+`/domains/anyone-elses-domain/users`. What binds it to the caller is a `url.patterns.restrictions`
+entry on the same variable name:
+
+```json
+"allowed.urls": [
+  {"include": "classpath://functional-admin-mail-baseline.json"}
+],
+"url.patterns.restrictions": {
+  "domain": {
+    "backing.claim": "email",
+    "operator": "HAS_DOMAIN"
+  }
+}
+```
+
+Without that block, the baseline is a full-platform grant. And note the corollary: a restriction is
+only checked when the rule that matched actually captured the variable
+(`WebAdminProxy.validatePatternRestrictions` skips unbound names). A rule like `/*`, `/users` or
+`/mailingLists/*` captures no `domain` and therefore escapes the `domain` restriction entirely — this
+is why the complete profiles list their unscoped endpoints explicitly rather than relying on
+restrictions to hold them back.
+
+### Baselines alone leave the frontend sidebar empty
+
+The baselines are a **data plane**: they grant the endpoints an admin's actions hit, not the
+endpoints the frontend probes to decide what to display. `twake-mail-admin` builds its left bar by
+asking its copy of the rules whether a fixed list of entry-point reads is allowed, and hides every
+entry whose read is not. In global mode those probes are `GET` on `/healthcheck`, `/domains`,
+`/users`, `/registeredUsers`, `/tasks`, `/tasks/{id}`, `/mailboxes/{mailboxId}`, `/mailRepositories`,
+`/events/deadLetter/groups`, `/quota`, `/mappings`, `/mailingLists`, `/servers/channels`,
+`/cassandra/version`, `/metrics`, `/jmap/settings/reports` — and a baseline grants none of them,
+because every baseline rule is anchored on `{domain}`. An administrator holding only
+`functional-admin-mail-baseline.json` gets a working API and a completely empty sidebar.
+
+The baselines are built for the frontend's **domain mode** (`mode: DOMAIN`), whose probes are
+tenant-scoped and mostly satisfied: `/domains/{domain}/users`, `/domains/{domain}/aliases`,
+`/domains/{domain}/team-mailboxes`, `/domains/{domain}/ratelimits` and `/quota/domains/{domain}` all
+match. Even there, two entries stay hidden — `Mailing lists` probes bare `GET /mailingLists`, and
+`Tasks` probes bare `GET /tasks`, while the baseline only has `/tasks/{domain}`.
+
+So: use a baseline as-is for a domain-mode deployment, and add the entry points you want visible.
+For a global-mode deployment, add them explicitly:
+
+```json
+"allowed.urls": [
+  {"denied": true, "verb": ["POST"], "endpoint": "/domains/{domain}?action=deleteData"},
+
+  {"verb": ["GET"], "endpoint": "/healthcheck"},
+  {"verb": ["GET"], "endpoint": "/domains"},
+  {"verb": ["GET"], "endpoint": "/users"},
+  {"verb": ["GET"], "endpoint": "/tasks"},
+  {"verb": ["GET"], "endpoint": "/mailingLists"},
+
+  {"include": "classpath://functional-admin-mail-baseline.json"}
+]
+```
+
+Mind what those reads actually expose: `GET /domains` and `GET /users` are unscoped and capture no
+`domain`, so a `domain` restriction does not narrow them — the tenant admin sees the full domain and
+user lists, and only their *contents* stay tenant-scoped through the baseline. That is the trade the
+complete support profiles make deliberately. If it is not acceptable, keep the deployment in domain
+mode rather than granting global entry points.
+
+Bare `GET /mailingLists` deserves particular care: the calendar baseline allows listing only through
+`?domain=`, precisely because an unfiltered list returns every tenant's lists. Adding
+`{"verb": ["GET"], "endpoint": "/mailingLists"}` to make the sidebar entry appear also allows the
+unfiltered call. There is no way, today, to show that entry without granting it — see below.
 
 ## Self-admin API
 

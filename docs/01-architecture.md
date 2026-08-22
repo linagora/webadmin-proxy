@@ -40,7 +40,7 @@ For every incoming request:
 
 ## Special proxy endpoints
 
-Requests matching `GET /.proxy/allowed/urls` are handled by the proxy itself and never forwarded to James. The proxy authenticates the caller (steps 1–6), then returns the `allowed.urls` list for that client as JSON. This allows frontends to adapt their UI based on the caller's permission level.
+Requests matching `GET /.proxy/allowed/urls` are handled by the proxy itself and never forwarded to James. The proxy authenticates the caller (steps 1–6), then returns the `allowed.urls` list for that client as JSON. This allows frontends to adapt their UI based on the caller's permission level. A frontend that does so re-implements rule matching on its own, and `twake-mail-admin`'s implementation is not equivalent to the proxy's — see [The proxy and the frontend evaluate rules differently](02-configuration.md#the-proxy-and-the-frontend-evaluate-rules-differently).
 
 ## Components
 
