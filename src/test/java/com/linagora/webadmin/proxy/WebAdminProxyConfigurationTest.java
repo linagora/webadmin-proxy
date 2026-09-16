@@ -517,12 +517,12 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
-        void valuelessQueryParameterShouldBeRejected() throws Exception {
+        void valuelessQueryParameterShouldBeAccepted() throws Exception {
             File config = writeConfig(withRule("""
                 { "verb": ["GET"], "endpoint": "/quota/users?hasSpecificQuota" }"""));
-            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("hasSpecificQuota");
+            assertThat(WebAdminProxyConfiguration.from(config).clientsForId("my-client").get(0).allowedUrls())
+                .extracting(AllowedUrl::endpointPattern)
+                .containsExactly("/quota/users?hasSpecificQuota");
         }
     }
 

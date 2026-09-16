@@ -22,16 +22,23 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 public class AllowedUrl {
 
-    private record CompiledQueryParam(Pattern pattern, List<String> variableNames) {}
+    private record CompiledQueryParam(Pattern pattern, List<String> variableNames, Map<String, String> groupNames) {
+        CompiledQueryParam {
+            variableNames = List.copyOf(variableNames);
+            groupNames = Map.copyOf(groupNames);
+        }
+    }
 
     private final List<String> verbs;
     private final String endpointPattern;
     private final boolean denied;
     private final Pattern compiledPathPattern;
     private final List<String> pathVariableNames;
+    private final Map<String, String> pathGroupNames;
     private final Map<String, CompiledQueryParam> compiledQueryParams;
 
     public AllowedUrl(List<String> verbs, String endpointPattern) {
@@ -48,8 +55,10 @@ public class AllowedUrl {
         String queryPart = queryIdx >= 0 ? endpointPattern.substring(queryIdx + 1) : "";
 
         List<String> names = new ArrayList<>();
-        this.compiledPathPattern = Pattern.compile(toPathRegex(pathPart, names));
+        Map<String, String> groupNames = new HashMap<>();
+        this.compiledPathPattern = compile(toPathRegex(pathPart, names, groupNames), endpointPattern);
         this.pathVariableNames = List.copyOf(names);
+        this.pathGroupNames = Map.copyOf(groupNames);
         this.compiledQueryParams = parseQueryPattern(queryPart, endpointPattern);
     }
 
@@ -86,7 +95,7 @@ public class AllowedUrl {
 
         Map<String, String> captured = new HashMap<>();
         for (String varName : pathVariableNames) {
-            captured.put(varName, m.group(varName));
+            captured.put(varName, m.group(pathGroupNames.get(varName)));
         }
 
         Map<String, String> requestParams = parseQueryString(queryString);
@@ -102,7 +111,7 @@ public class AllowedUrl {
                 return Optional.empty();
             }
             for (String varName : cqp.variableNames()) {
-                String groupValue = qm.group(varName);
+                String groupValue = qm.group(cqp.groupNames().get(varName));
                 String existing = captured.get(varName);
                 if (existing != null && !existing.equals(groupValue)) {
                     return Optional.empty();
@@ -124,20 +133,37 @@ public class AllowedUrl {
         }
         Map<String, CompiledQueryParam> result = new HashMap<>();
         for (String param : queryPart.split("&")) {
+            if (isOtherParamsPlaceholder(param)) {
+                // '{params}' stands for "any other parameters": unlisted parameters are ignored anyway.
+                continue;
+            }
             int eq = param.indexOf('=');
             if (eq < 0) {
-                throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern + "': query parameter '"
-                    + param + "' has no '='. A parameter without a value pattern would impose no constraint at all. "
-                    + "Write '" + param + "=' to require a flag-style parameter (present, empty or valueless), "
-                    + "or '" + param + "=*' to require it with any value.");
+                // Valueless 'flag': the parameter must be present, with any value or none.
+                result.put(param, new CompiledQueryParam(Pattern.compile("^.*$"), List.of(), Map.of()));
+                continue;
             }
             String paramName = param.substring(0, eq);
             String valuePattern = param.substring(eq + 1);
             List<String> varNames = new ArrayList<>();
-            Pattern compiled = Pattern.compile(toPathRegex(valuePattern, varNames));
-            result.put(paramName, new CompiledQueryParam(compiled, List.copyOf(varNames)));
+            Map<String, String> groupNames = new HashMap<>();
+            Pattern compiled = compile(toPathRegex(valuePattern, varNames, groupNames), endpointPattern);
+            result.put(paramName, new CompiledQueryParam(compiled, varNames, groupNames));
         }
         return Map.copyOf(result);
+    }
+
+    private static boolean isOtherParamsPlaceholder(String param) {
+        return param.length() > 2 && param.startsWith("{") && param.endsWith("}")
+            && param.indexOf('{', 1) < 0 && param.indexOf('=') < 0;
+    }
+
+    private static Pattern compile(String regex, String endpointPattern) {
+        try {
+            return Pattern.compile(regex);
+        } catch (PatternSyntaxException e) {
+            throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern + "': " + e.getDescription(), e);
+        }
     }
 
     private static Map<String, String> parseQueryString(String queryString) {
@@ -158,7 +184,12 @@ public class AllowedUrl {
         return result;
     }
 
-    private static String toPathRegex(String pattern, List<String> variableNames) {
+    /**
+     * Variables are compiled to generated group names, so that any variable name is accepted and a
+     * variable repeated within the same pattern becomes a back-reference: all its occurrences must
+     * capture the same value.
+     */
+    private static String toPathRegex(String pattern, List<String> variableNames, Map<String, String> groupNames) {
         StringBuilder sb = new StringBuilder("^");
         int i = 0;
         while (i < pattern.length()) {
@@ -167,8 +198,15 @@ public class AllowedUrl {
                 int end = pattern.indexOf('}', i);
                 if (end != -1) {
                     String varName = pattern.substring(i + 1, end);
-                    variableNames.add(varName);
-                    sb.append("(?<").append(varName).append(">[^/]+)");
+                    String existingGroup = groupNames.get(varName);
+                    if (existingGroup != null) {
+                        sb.append("\\k<").append(existingGroup).append(">");
+                    } else {
+                        String groupName = "v" + groupNames.size();
+                        groupNames.put(varName, groupName);
+                        variableNames.add(varName);
+                        sb.append("(?<").append(groupName).append(">[^/]+)");
+                    }
                     i = end + 1;
                 } else {
                     sb.append(Pattern.quote(String.valueOf(c)));
