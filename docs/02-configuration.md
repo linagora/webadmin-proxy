@@ -100,6 +100,10 @@ Each rule is either a regular endpoint rule or an include directive:
 The field is `verb`, singular. `verbs` is accepted as a deprecated alias and behaves identically; a
 warning is logged. Setting both in the same rule is a startup error.
 
+`verb` must be a non-empty array. An absent `verb` means every verb; `"verb": []` or `"verb": "GET"`
+is a **startup error**: an empty list reads as "no verb", and a rule whose last verb was removed
+would otherwise silently grant every verb.
+
 **Any other field name is a startup error.** This is deliberate: an unread field imposes no
 constraint, so a typo does not narrow a rule, it *widens* it. A rule spelled `"method": ["DELETE"]`
 would apply to every verb while reading as if it applied only to `DELETE` — the proxy refuses to

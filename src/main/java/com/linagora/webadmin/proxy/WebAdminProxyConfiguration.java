@@ -222,6 +222,7 @@ public record WebAdminProxyConfiguration(int port,
         List<String> verbs = new ArrayList<>();
         JsonNode verbsNode = verbNode(urlNode);
         if (verbsNode != null) {
+            rejectEmptyVerbs(urlNode, verbsNode);
             verbsNode.forEach(v -> verbs.add(v.asText()));
         }
         boolean denied = Optional.ofNullable(urlNode.get("denied"))
@@ -246,6 +247,19 @@ public record WebAdminProxyConfiguration(int port,
             return verbsAlias;
         }
         return verb;
+    }
+
+    /**
+     * An absent verb list means every verb. An empty one reads as "no verb" but would mean the same, so a rule
+     * whose last verb was removed would silently grant every verb. Same for a value that is not an array.
+     */
+    private static void rejectEmptyVerbs(JsonNode urlNode, JsonNode verbsNode) {
+        String field = urlNode.has("verb") ? "verb" : "verbs";
+        if (!verbsNode.isArray() || verbsNode.isEmpty()) {
+            throw new IllegalArgumentException("Invalid allowed.urls rule " + urlNode + ": '" + field
+                + "' is " + (verbsNode.isArray() ? "empty" : "not an array")
+                + ". Omit it to allow every verb, or list the verbs to allow.");
+        }
     }
 
     /**

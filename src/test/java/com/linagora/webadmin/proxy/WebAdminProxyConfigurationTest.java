@@ -490,6 +490,43 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void emptyVerbShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verb": [], "endpoint": "/domains/{domain}" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'verb' is empty")
+                .hasMessageContaining("Omit it to allow every verb");
+        }
+
+        @Test
+        void emptyVerbsAliasShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verbs": [], "endpoint": "/domains/{domain}" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'verbs' is empty");
+        }
+
+        @Test
+        void nonArrayVerbShouldBeRejected() throws Exception {
+            File config = writeConfig(withRule("""
+                { "verb": "DELETE", "endpoint": "/domains/{domain}" }"""));
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'verb' is not an array");
+        }
+
+        @Test
+        void absentVerbShouldAllowEveryVerb() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(withRule("""
+                { "endpoint": "/domains/{domain}" }""")));
+            AllowedUrl rule = config.clientsForId("my-client").get(0).allowedUrls().get(0);
+            assertThat(rule.matches("DELETE", "/domains/example.com")).isTrue();
+            assertThat(rule.matches("GET", "/domains/example.com")).isTrue();
+        }
+
+        @Test
         void unknownFieldShouldBeRejected() throws Exception {
             File config = writeConfig(withRule("""
                 { "method": ["DELETE"], "endpoint": "/domains/{domain}/aliases" }"""));
