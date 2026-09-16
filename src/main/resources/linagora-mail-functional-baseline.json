@@ -1,0 +1,156 @@
+[
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/rename/{newUsername}?action=rename"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}?action=deleteData"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes?task=reIndex"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes?task=subscribeAll"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes?task=recomputeFastViewProjectionItems"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mappings/user/%@{domain}"
+  },
+  {
+    "verb": [
+      "GET",
+      "DELETE"
+    ],
+    "endpoint": "/mappings/sources/%@{domain}?type={type}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/users/%@{domain}?action=restore"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mails?limit={limit}&offset={offset}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/quota/users?minOccupationRatio={min}&maxOccupationRatio={max}&limit={limit}&offset={offset}&domain={domain}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/data?tiering={tiering}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/templates?action=provision&{params}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/users/%@{domain}/messages?force=true"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/teamMailbox/%@{domain}?action=restore"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists?domain=lists.{domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists?domain={domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists/%@lists.{domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists/%@{domain}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@lists.{domain}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@lists.{domain}/members/{member}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@lists.{domain}/owners/{owner}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@{domain}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@{domain}/members/{member}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/%@{domain}/owners/{owner}"
+  },
+  {
+    "include": "classpath://functional-admin-mail-baseline.json"
+  }
+]

@@ -1,0 +1,313 @@
+[
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/rename/{newUser}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes/{mailboxName}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes/{mailboxName}/messages"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE",
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mailboxes"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/quota/users/%@{domain}/size"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/address/aliases/%@{domain}/sources/{alias}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/address/forwards/%@{domain}/targets/{destination}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST",
+      "DELETE"
+    ],
+    "endpoint": "/vacation/%@{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/identities"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/users/%@{domain}/identities/{identityId}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/users/%@{domain}/authorizedUsers/{delegated}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE"
+    ],
+    "endpoint": "/servers/channels/%@{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/users/%@{domain}/ratelimits"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE"
+    ],
+    "endpoint": "/mappings/sources/%@{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/labels"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PATCH",
+      "DELETE"
+    ],
+    "endpoint": "/users/%@{domain}/labels/{labelId}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE",
+      "PUT"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/members/{username}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/mails"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/users/%@{domain}/jmap/settings"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/%@{domain}/templates"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/aliases/{source}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{name}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/extraSenders/{username}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/quota/limit/size"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/mailboxes/{folderName}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/mailboxes/{folderName}/subaddressing"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/mailboxes/{folderName}/extraAcl/{username}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/mailboxes/{folderName}/extraAcl"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/quota/domains/{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/domains/{domain}/ratelimits"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "GET",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/tasks/{id}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/{user}?action=deleteData"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/{user}/data"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mappings/user/%@{domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mappings/sources/%@{domain}?type={type}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/users/%@{domain}?action=restore"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/quota/users?minOccupationRatio={min}&maxOccupationRatio={max}&limit={limit}&offset={offset}&domain={domain}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/users/%@{domain}/messages?force=true"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/deletedMessages/teamMailbox/%@{domain}?action=restore"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists?domain=lists.{domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists?domain={domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists/%@lists.{domain}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailingLists/%@{domain}"
+  },
+  {
+    "include": "classpath://functional-admin-mail-baseline.json"
+  }
+]

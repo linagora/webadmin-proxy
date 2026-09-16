@@ -299,20 +299,67 @@ class AllowedUrlTest {
             assertThat(rule.matches("GET", "/domains/example.com/users?domain=other.com")).isFalse();
         }
 
-        // --- Flag-style parameters ---
+        // --- Same variable twice in the path ---
 
         @Test
-        void valuelessQueryParamPatternShouldBeRejected() {
-            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("hasSpecificQuota");
+        void sameVariableTwiceInPathShouldMatchConsistentValues() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/team-mailboxes/{mailbox}/members/%@{domain}");
+            Optional<Map<String, String>> result = rule.match("PUT", "/domains/example.com/team-mailboxes/sales/members/bob@example.com");
+            assertThat(result).isPresent();
+            assertThat(result.get()).containsEntry("domain", "example.com").containsEntry("mailbox", "sales");
         }
 
         @Test
-        void valuelessQueryParamPatternShouldBeRejectedAmongValuedOnes() {
-            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/messages?user={user}&useSavedDate"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("useSavedDate");
+        void sameVariableTwiceInPathWithDifferentValuesShouldNotMatch() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/team-mailboxes/{mailbox}/members/%@{domain}");
+            assertThat(rule.matches("PUT", "/domains/example.com/team-mailboxes/sales/members/bob@other.com")).isFalse();
+        }
+
+        @Test
+        void variableNamesWithUnderscoreShouldBeAccepted() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/tasks/{task_id}");
+            assertThat(rule.match("GET", "/tasks/abc")).contains(Map.of("task_id", "abc"));
+        }
+
+        // --- Flag-style parameters ---
+
+        @Test
+        void valuelessQueryParamPatternShouldRequireParamPresentWithAnyValue() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota");
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=true")).isTrue();
+            assertThat(rule.matches("GET", "/quota/users")).isFalse();
+        }
+
+        @Test
+        void valuelessQueryParamPatternShouldBeSupportedAmongValuedOnes() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user={user}&useSavedDate");
+            assertThat(rule.matches("DELETE", "/messages?user=bob@example.com&useSavedDate")).isTrue();
+            assertThat(rule.matches("DELETE", "/messages?user=bob@example.com")).isFalse();
+        }
+
+        // --- Other parameters placeholder ---
+
+        @Test
+        void otherParamsPlaceholderShouldImposeNoConstraint() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/templates?action=provision&{params}");
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision")).isTrue();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=a&to=b")).isTrue();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?from=a")).isFalse();
+        }
+
+        @Test
+        void otherParamsPlaceholderShouldBeTheWholeQuery() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/tasks?{query_params}");
+            assertThat(rule.matches("GET", "/tasks")).isTrue();
+            assertThat(rule.matches("GET", "/tasks?status=failed")).isTrue();
+        }
+
+        @Test
+        void otherParamsPlaceholderShouldNotCaptureAnyVariable() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/tasks?{domain}");
+            assertThat(rule.match("GET", "/tasks?domain=other.com")).contains(Map.of());
         }
 
         @Test

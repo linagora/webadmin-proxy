@@ -1,0 +1,110 @@
+[
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/healthcheck"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/mailRepositories"
+  },
+  {
+    "verb": [
+      "PUT"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}?protocol={protocol}"
+  },
+  {
+    "verb": [
+      "PUT",
+      "GET"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}"
+  },
+  {
+    "verb": [
+      "GET",
+      "PATCH"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}/mails"
+  },
+  {
+    "verb": [
+      "PATCH"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}/mails?action=reprocess"
+  },
+  {
+    "verb": [
+      "GET",
+      "PATCH",
+      "DELETE"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}/mails/{mailKey}"
+  },
+  {
+    "verb": [
+      "PATCH"
+    ],
+    "endpoint": "/mailRepositories/{encodedPath}/mails/{mailKey}?action=reprocess"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/events/deadLetter/groups"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/events/deadLetter?action=reDeliver"
+  },
+  {
+    "verb": [
+      "GET",
+      "POST"
+    ],
+    "endpoint": "/events/deadLetter/groups/{group}"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/events/deadLetter/groups/{group}?action=reDeliver"
+  },
+  {
+    "verb": [
+      "GET",
+      "DELETE"
+    ],
+    "endpoint": "/events/deadLetter/groups/{group}/{insertionId}"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/metrics"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/cassandra/version"
+  },
+  {
+    "verb": [
+      "GET"
+    ],
+    "endpoint": "/cassandra/version/latest"
+  },
+  {
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/cassandra/version/upgrade/latest"
+  }
+]

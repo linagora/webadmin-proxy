@@ -136,6 +136,8 @@ independently; the path half is matched against the URL-decoded request path.
 | `?param=value` | Requires the parameter to equal a literal value |
 | `?param=*` | Requires the parameter, accepts any value including an empty one |
 | `?param=` | Requires the parameter to be present and valueless — matches `?param` and `?param=` |
+| `?param` | Requires the parameter, accepts any value including none — same as `?param=*` |
+| `?{params}` | Stands for "any other parameters". Imposes no constraint and captures nothing: `/tasks?{query_params}` behaves as `/tasks` |
 
 Examples:
 - `/users` — exact path
@@ -148,8 +150,15 @@ Examples:
 `/tasks/abc` but **not** `/tasks`. Profiles that mean "the collection and everything under it" list
 both, as `{"endpoint": "/tasks"}, {"endpoint": "/tasks/*"}`.
 
-The same variable name may appear in both halves (`/domains/{domain}/users?domain={domain}`); the
-rule then matches only if both occurrences capture the same value.
+The same variable name may appear several times, in both halves (`/domains/{domain}/users?domain={domain}`)
+or twice in the path (`/domains/{domain}/team-mailboxes/{mailbox}/members/%@{domain}`); the rule then
+matches only if every occurrence captures the same value. Variable names are free-form
+(`{query_params}`, `{task-id}`).
+
+Mind the direction of that constraint on a **deny** rule: repeating `{domain}` narrows what the rule
+matches, so it also narrows what it denies. A deny on `…/members/%@{domain}` does not stop adding
+`eve@other.com` to a team mailbox of your domain, and a later `/domains/{domain}/*` allow lets it
+through. Deny rules should use a free variable (`…/members/{username}`).
 
 #### Query string matching
 
@@ -166,12 +175,10 @@ The query half is matched by **presence and value, per listed parameter**:
   regardless of its filters.
 
 **Flag-style parameters.** James has endpoints selected by a valueless parameter — `?hasSpecificQuota`,
-`?reload-certificate`. Write these as `?hasSpecificQuota=`, not `?hasSpecificQuota`: a request
-parameter with no `=` is read as having an empty value, and the empty value pattern matches it. A
-pattern parameter with no `=` is **rejected at startup**, because it could only ever mean "no
-constraint" — the rule would collapse to the bare path and match any query string, which is the
-opposite of what "all listed parameters must be present" leads a reader to expect. Prior versions
-dropped such parameters silently.
+`?reload-certificate`. A request parameter with no `=` is read as having an empty value. In a
+pattern, `?hasSpecificQuota` requires the parameter to be present whatever its value, like
+`?hasSpecificQuota=*`; write `?hasSpecificQuota=` to also require it to be valueless. Prior versions
+dropped such parameters silently, then rejected them at startup.
 
 Against a request carrying `?flag`, `?flag=`, `?flag=true`, or no `flag` at all:
 
@@ -181,7 +188,7 @@ Against a request carrying `?flag`, `?flag=`, `?flag=true`, or no `flag` at all:
 | `?flag=*` | match | match | match | — |
 | `?flag=true` | — | — | match | — |
 | *(no query half)* | match | match | match | match |
-| `?flag` | *rejected at startup* | | | |
+| `?flag` | match | match | match | — |
 
 ### url.patterns.restrictions
 
