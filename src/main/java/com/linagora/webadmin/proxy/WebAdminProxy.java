@@ -13,6 +13,7 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -31,6 +32,7 @@ import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
 import reactor.netty.DisposableServer;
@@ -52,6 +54,8 @@ public class WebAdminProxy implements Startable {
     private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";
     private static final String WHOAMI_PATH = "/.proxy/whoami";
     private static final String MY_DOMAIN_PATH = "/.proxy/myDomain";
+    private static final String BACKEND_UNAUTHORIZED_MESSAGE =
+        "Webadmin backend rejected the proxy credentials: check the 'webadmin.token' configuration";
 
     private final WebAdminProxyConfiguration configuration;
     private final OidcTokenCache tokenCache;
@@ -241,8 +245,26 @@ public class WebAdminProxy implements Startable {
                                                        ByteBufFlux body) {
         Mono<byte[]> aggregated = body.aggregate().asByteArray()
             .switchIfEmpty(Mono.just(new byte[0]));
+        if (res.status().code() == HttpResponseStatus.UNAUTHORIZED.code()) {
+            return rejectBackendUnauthorized(response, res, aggregated);
+        }
         response.status(res.status());
         res.responseHeaders().forEach(entry -> response.header(entry.getKey(), entry.getValue()));
         return response.sendByteArray(aggregated);
+    }
+
+    /**
+     * The proxy holds full webadmin access by design: a 401 from the backend can only mean the
+     * configured {@code webadmin.token} is wrong. Forwarding it verbatim would make frontends believe
+     * their own OIDC session expired, so it is reported as a proxy-side misconfiguration instead.
+     */
+    private static NettyOutbound rejectBackendUnauthorized(HttpServerResponse response,
+                                                           HttpClientResponse res,
+                                                           Mono<byte[]> backendBody) {
+        response.status(HttpResponseStatus.INTERNAL_SERVER_ERROR);
+        return response.sendByteArray(backendBody
+            .doOnNext(body -> LOGGER.error("Backend rejected the configured webadmin token (401) for {} {}: {}",
+                res.method().name(), res.uri(), new String(body, StandardCharsets.UTF_8)))
+            .map(body -> BACKEND_UNAUTHORIZED_MESSAGE.getBytes(StandardCharsets.UTF_8)));
     }
 }
