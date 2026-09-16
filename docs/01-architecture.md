@@ -36,7 +36,7 @@ For every incoming request:
 6. **Check authorized users** — if `authorized.users` is set, the resolved user (from the configured claim) must appear in the list. Absent → 403.
 7. **Check URL allowlist** — if `allowed.urls` is set, the request method and path are matched against the patterns. No match → 403.
 8. **Check variable restrictions** — captured URL template variables are compared against OIDC claim values according to `url.patterns.restrictions`. Mismatch → 403.
-9. **Proxy to backend** — the request is forwarded to the client's `webadmin.backend`, with the `Authorization` header replaced by `webadmin.token`. All other headers and the body are forwarded as-is. The backend response is returned verbatim.
+9. **Proxy to backend** — the request is forwarded to the client's `webadmin.backend`, with the `Authorization` header replaced by `webadmin.token`. All other headers and the body are forwarded as-is. The backend response is returned verbatim, with one exception: a 401 from the backend means the configured `webadmin.token` is wrong (the proxy is expected to hold full webadmin access), so it is logged as an error and returned as a 500 rather than forwarded. Forwarding it would make frontends believe the caller's own OIDC session is invalid.
 
 ## Special proxy endpoints
 

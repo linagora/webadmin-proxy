@@ -275,6 +275,25 @@ class WebAdminProxyIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(404);
     }
 
+    @Test
+    void shouldTranslateBackend401Into500() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(401)
+                .withHeader("WWW-Authenticate", "Bearer realm=\"james\"")
+                .withBody("Invalid token"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(500);
+        assertThat(response.header("WWW-Authenticate")).isNull();
+        assertThat(response.body().asString()).contains("webadmin.token");
+    }
+
     // --- 401 scenarios ---
 
     @Test
