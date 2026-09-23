@@ -14,6 +14,7 @@
 package com.linagora.webadmin.proxy;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import jakarta.inject.Inject;
 
@@ -37,6 +38,7 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
 
     private final AsyncLoadingCache<String, AuthenticatedRequest> cache;
     private final SetMultimap<String, String> sidToTokens = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+    private final AtomicBoolean missingSidReported = new AtomicBoolean(false);
 
     @Inject
     public CaffeineOidcTokenCache(OidcTokenResolver resolver, OidcConfiguration configuration) {
@@ -45,7 +47,7 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
                 .doOnNext(auth -> {
                     auth.sessionId().ifPresentOrElse(
                         sid -> sidToTokens.put(sid, token),
-                        () -> LOGGER.warn("Token of user {} has no 'sid' claim — backchannel logout will not work for this session. Check OIDC configuration.", auth.user()));
+                        () -> reportMissingSid(auth));
                     LOGGER.debug("Caching token info: user={}, clientId={}", auth.user(), auth.clientId());
                 })
                 .subscribeOn(Schedulers.fromExecutor(executor))
@@ -59,6 +61,14 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
                 }
             })
             .buildAsync(loader);
+    }
+
+    private void reportMissingSid(AuthenticatedRequest auth) {
+        if (missingSidReported.compareAndSet(false, true)) {
+            LOGGER.warn("OIDC tokens have no 'sid' claim — backchannel logout will not work. Check OIDC configuration.");
+        } else {
+            LOGGER.debug("Token of user {} has no 'sid' claim", auth.user());
+        }
     }
 
     @Override
