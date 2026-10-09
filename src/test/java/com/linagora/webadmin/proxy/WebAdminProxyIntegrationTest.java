@@ -3999,4 +3999,101 @@ class WebAdminProxyIntegrationTest {
                 .then().statusCode(200);
         }
     }
+
+    /**
+     * Profiles for deployments where ldap-rest owns user quotas, aliases, renames and mailing lists:
+     * the admin console must not write them behind the IAM's back.
+     */
+    abstract class LdapRestManagedProfile extends ShippedProfile {
+
+        @Override
+        String userEmail() {
+            return "alice@example.com";
+        }
+
+        @Override
+        boolean domainScoped() {
+            return true;
+        }
+
+        @Test
+        void shouldAllowReadingLdapRestManagedData() {
+            proxy().when().get("/quota/users/bob@example.com").then().statusCode(200);
+            proxy().when().get("/address/aliases/bob@example.com").then().statusCode(200);
+            proxy().when().get("/mailingLists?domain=lists.example.com").then().statusCode(200);
+            proxy().when().get("/mailingLists/sales@lists.example.com").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenWritingUserQuota() {
+            proxy().when().put("/quota/users/bob@example.com/size").then().statusCode(403);
+            proxy().when().delete("/quota/users/bob@example.com/size").then().statusCode(403);
+            proxy().when().put("/quota/users/bob@example.com/count").then().statusCode(403);
+            proxy().when().put("/quota/users/bob@example.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenWritingUserAliases() {
+            proxy().when().put("/address/aliases/bob@example.com/sources/robert@example.com").then().statusCode(403);
+            proxy().when().delete("/address/aliases/bob@example.com/sources/robert@example.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenRenamingUser() {
+            proxy().when().post("/users/bob@example.com/rename/robert@example.com?action=rename").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/rename/robert@example.com?action=rename&force").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenWritingMailingLists() {
+            proxy().when().put("/mailingLists/sales@lists.example.com").then().statusCode(403);
+            proxy().when().delete("/mailingLists/sales@example.com").then().statusCode(403);
+            proxy().when().put("/mailingLists/sales@lists.example.com/members/eve@partner.com").then().statusCode(403);
+            proxy().when().delete("/mailingLists/sales@lists.example.com/owners/bob@example.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowManagingForwardsAndIdentities() {
+            proxy().when().put("/address/forwards/bob@example.com/targets/bob@partner.com").then().statusCode(200);
+            proxy().when().delete("/address/forwards/bob@example.com/targets/bob@partner.com").then().statusCode(200);
+            proxy().when().post("/users/bob@example.com/identities").then().statusCode(200);
+            proxy().when().put("/users/bob@example.com/identities/64f1c2").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403OnAnotherDomain() {
+            proxy().when().get("/quota/users/bob@other.com").then().statusCode(403);
+            proxy().when().get("/users/bob@other.com/mailboxes").then().statusCode(403);
+        }
+    }
+
+    @Nested
+    class LinagoraMailFunctionalBaselineLdapRestProfile extends LdapRestManagedProfile {
+
+        @Override
+        String profile() {
+            return "linagora-mail-functional-baseline-ldap-rest.json";
+        }
+
+        @Test
+        void shouldKeepBaselineGrants() {
+            proxy().when().post("/users/bob@example.com?action=deleteData").then().statusCode(200);
+            proxy().when().delete("/domains/example.com/team-mailboxes/sales").then().statusCode(200);
+        }
+    }
+
+    @Nested
+    class LinagoraMailFunctionalAdminLdapRestProfile extends LdapRestManagedProfile {
+
+        @Override
+        String profile() {
+            return "linagora-mail-functional-admin-ldap-rest.json";
+        }
+
+        @Test
+        void shouldKeepAdminDenials() {
+            proxy().when().post("/users/bob@example.com?action=deleteData").then().statusCode(403);
+            proxy().when().delete("/domains/example.com/team-mailboxes/sales").then().statusCode(403);
+        }
+    }
 }
