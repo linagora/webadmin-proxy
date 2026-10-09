@@ -3384,6 +3384,30 @@ class WebAdminProxyIntegrationTest {
             proxy().when().get("/users/bob@other.com/booking-links")
                 .then().statusCode(403);
         }
+
+        @Test
+        void shouldAllowCopyingOwnDomainIntoDomainAddressBook() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom&sourceDomain=example.com")
+                .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingAnotherDomainIntoDomainAddressBook() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom&sourceDomain=students.example.org")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingAnotherDomainIntoDomainAddressBookWithLdapFilter() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom&sourceDomain=students.example.org&ldapFilter=(employeeType=student)")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingIntoDomainAddressBookWithoutSourceDomain() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom")
+                .then().statusCode(403);
+        }
     }
 
     @Nested
@@ -3503,6 +3527,12 @@ class WebAdminProxyIntegrationTest {
                 .then().statusCode(200);
             proxy().when().delete("/domains/example.com/team-calendars/64f1c2")
                 .then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingAnotherDomainIntoDomainAddressBook() {
+            proxy().when().post("/domains/teachers.school.org/addressbooks/dab?action=copyFrom&sourceDomain=students.school.org")
+                .then().statusCode(403);
         }
     }
 

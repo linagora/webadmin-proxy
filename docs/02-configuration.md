@@ -228,9 +228,9 @@ Six profiles ship on the classpath. They fall into two families, and the distinc
 | `classpath://linagora-mail-support-profile.json` | complete | Linagora support agent, Twake Mail |
 | `classpath://linagora-calendar-support-profile.json` | complete | Linagora support agent, Twake Calendar |
 
-**Baselines** are data-plane fragments. Every rule is anchored on a `{domain}` variable, they contain
-no deny rules and no platform-wide endpoints, and they are meant to be included after your own deny
-rules — not used alone. See [Baselines are tenant-scoped only if you scope them](#baselines-are-tenant-scoped-only-if-you-scope-them)
+**Baselines** are data-plane fragments. Every rule is anchored on a domain variable, they contain
+no platform-wide endpoints and only the deny rules needed to keep tenants apart, and they are meant
+to be included after your own deny rules — not used alone. See [Baselines are tenant-scoped only if you scope them](#baselines-are-tenant-scoped-only-if-you-scope-them)
 and [Baselines alone leave the frontend sidebar empty](#baselines-alone-leave-the-frontend-sidebar-empty)
 before shipping one.
 
@@ -269,7 +269,12 @@ read (`GET /mailingLists/%@lists.{domain}` and `%@{domain}`) plus member and own
 
 **Withholds**: creating or deleting a mailing list (no `PUT`/`DELETE` on `/mailingLists/{address}`
 itself); unfiltered `GET /mailingLists`, which would return every tenant's lists — listing is allowed
-only through the `?domain=` filter; and, as with the mail baseline, every unscoped endpoint.
+only through the `?domain=` filter; copying the users of *another* domain into a domain address book
+(`POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain=…`), which would
+let one tenant read another tenant's directory — the two leading rules allow the copy only when
+`sourceDomain` equals `{domain}` and deny every other `action=copyFrom`, with or without `ldapFilter`,
+even for holders without a `domain` restriction such as the calendar support profile; and, as with
+the mail baseline, every unscoped endpoint.
 
 **Use as**: a starting point, same caveats as the mail baseline.
 
@@ -343,8 +348,8 @@ Twake Calendar support agent. Same shape: platform reads (`/healthcheck`, `/metr
 same address-book and booking-link `DELETE` carve-outs as the calendar admin profile, and then
 `{"include": "classpath://functional-admin-calendar-baseline.json"}`.
 
-**Withholds**: the two `action=deleteData` wipes, and every other `DELETE` under
-`/users/%@{domain}/*`.
+**Withholds**: the two `action=deleteData` wipes, every other `DELETE` under
+`/users/%@{domain}/*`, and, through the included baseline, cross-domain address book copies.
 
 **Use as-is**: yes.
 
