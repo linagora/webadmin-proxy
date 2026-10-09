@@ -353,6 +353,25 @@ same address-book and booking-link `DELETE` carve-outs as the calendar admin pro
 
 **Use as-is**: yes.
 
+### LDAP-rest compatible mail profiles
+
+When [ldap-rest](https://github.com/linagora/ldap-rest) and its
+[Twake James plugin](https://github.com/linagora/ldap-rest/blob/master/src/plugins/twake/james.ts) are
+the source of truth, the plugin pushes user quotas, user aliases, user renames and mailing lists to
+James. Writes from the admin console would be overwritten by — or diverge from — the IAM.
+
+`classpath://ldap-rest-managed-denials.json` denies exactly those writes: `PUT`/`DELETE` on
+`/quota/users/{username}` and below, `PUT`/`DELETE` on `/address/aliases/{username}/sources/{alias}`,
+`POST /users/{username}/rename/{newUsername}`, and `PUT`/`DELETE` on `/mailingLists/{address}` and
+its `members` and `owners`. Reads stay granted; forwards and identities stay manageable.
+
+Include it first, before any profile:
+
+| Profile | Equivalent to |
+|---------|---------------|
+| `classpath://linagora-mail-functional-baseline-ldap-rest.json` | `linagora-mail-functional-baseline.json` + LDAP-rest denials |
+| `classpath://linagora-mail-functional-admin-ldap-rest.json` | `linagora-mail-functional-admin.json` + LDAP-rest denials |
+
 ### Baselines are tenant-scoped only if you scope them
 
 A baseline's `{domain}` is a *capture*, not a constraint. On its own, `/domains/{domain}/*` matches

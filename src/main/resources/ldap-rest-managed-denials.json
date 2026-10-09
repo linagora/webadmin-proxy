@@ -1,0 +1,57 @@
+[
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/quota/users/{username}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/quota/users/{username}/*"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/address/aliases/{username}/sources/{alias}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "POST"
+    ],
+    "endpoint": "/users/{username}/rename/{newUsername}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/{address}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/{address}/members/{member}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/mailingLists/{address}/owners/{owner}"
+  }
+]
