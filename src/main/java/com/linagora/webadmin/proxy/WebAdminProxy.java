@@ -51,6 +51,7 @@ public class WebAdminProxy implements Startable {
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER);
     private static final String ALLOWED_CORS_HEADERS = "Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING";
+    private static final String EXPOSED_CORS_HEADERS = "X-Group, X-Insertion-Id";
     private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";
     private static final String WHOAMI_PATH = "/.proxy/whoami";
     private static final String MY_DOMAIN_PATH = "/.proxy/myDomain";
@@ -159,6 +160,7 @@ public class WebAdminProxy implements Startable {
         }
         response.header("Access-Control-Allow-Methods", "DELETE, GET, PATCH, POST, PUT");
         response.header("Access-Control-Allow-Headers", ALLOWED_CORS_HEADERS);
+        response.header("Access-Control-Expose-Headers", EXPOSED_CORS_HEADERS);
         if (allowedOrigins.contains("*")) {
             response.header("Access-Control-Allow-Origin", "*");
         } else if (allowedOrigins.contains(requestOrigin)) {

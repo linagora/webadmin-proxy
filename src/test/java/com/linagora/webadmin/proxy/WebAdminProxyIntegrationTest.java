@@ -2682,6 +2682,46 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void preflightShouldExposeDeadLetterLocationHeaders() {
+            given()
+                .port(proxyServer.getPort())
+                .header("Origin", "https://app.example.com")
+                .header("Access-Control-Request-Method", "GET")
+            .when()
+                .options("/events/deadLetter?eventId=event1")
+            .then()
+                .statusCode(204)
+                .header("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("X-Group"))
+                .header("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("X-Insertion-Id"));
+        }
+
+        @Test
+        void deadLetterSearchShouldExposeAndForwardEventLocationHeaders() {
+            MockServerClient backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
+            backendMock.when(request().withMethod("GET").withPath("/events/deadLetter")
+                    .withQueryStringParameter("eventId", "event1"))
+                .respond(response().withStatusCode(200)
+                    .withHeader("X-Group", "group1")
+                    .withHeader("X-Insertion-Id", "insertion1")
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{}"));
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .header("Origin", "https://app.example.com")
+            .when()
+                .get("/events/deadLetter?eventId=event1")
+            .then()
+                .statusCode(200)
+                .header("Access-Control-Allow-Origin", "https://app.example.com")
+                .header("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("X-Group"))
+                .header("Access-Control-Expose-Headers", org.hamcrest.Matchers.containsStringIgnoringCase("X-Insertion-Id"))
+                .header("X-Group", "group1")
+                .header("X-Insertion-Id", "insertion1");
+        }
+
+        @Test
         void shouldForwardIKnowWhatIMDoingHeaderToBackend() {
             MockServerClient backendMock = new MockServerClient("localhost", backendMockServer.getLocalPort());
             backendMock.when(request().withMethod("POST").withPath("/mailboxes"))
