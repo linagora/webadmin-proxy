@@ -38,7 +38,7 @@ mvn compile jib:build -Djib.to.image=<registry>/webadmin-proxy:<tag>
 mvn compile jib:dockerBuild
 ```
 
-The default image name is `linagora/webadmin-proxy`. The base image is `eclipse-temurin:26-jre-noble`. Both can be overridden:
+The default image name is `linagora/webadmin-proxy`. The base image is `eclipse-temurin:27-jre-resolute`. Both can be overridden:
 
 ```bash
 mvn compile jib:build \
