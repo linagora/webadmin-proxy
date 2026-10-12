@@ -357,20 +357,36 @@ same address-book and booking-link `DELETE` carve-outs as the calendar admin pro
 
 When [ldap-rest](https://github.com/linagora/ldap-rest) and its
 [Twake James plugin](https://github.com/linagora/ldap-rest/blob/master/src/plugins/twake/james.ts) are
-the source of truth, the plugin pushes user quotas, user aliases, user renames and mailing lists to
-James. Writes from the admin console would be overwritten by — or diverge from — the IAM.
+the source of truth, the plugin pushes user quotas, user aliases, user renames, delegation and team
+mailboxes to James, and Twake Mail reads mailing lists straight from LDAP. Writes from the admin console
+would be overwritten by — or diverge from — the IAM.
 
-`classpath://ldap-rest-managed-denials.json` denies exactly those writes: `PUT`/`DELETE` on
-`/quota/users/{username}` and below, `PUT`/`DELETE` on `/address/aliases/{username}/sources/{alias}`,
-`POST /users/{username}/rename/{newUsername}`, and `PUT`/`DELETE` on `/mailingLists/{address}` and
-its `members` and `owners`. Reads stay granted; forwards and identities stay manageable.
+`classpath://ldap-rest-managed-denials.json` denies exactly those writes:
 
-Include it first, before any profile:
+| Owned by ldap-rest | Denied |
+|---|---|
+| User quota | `PUT`/`DELETE` on `/quota/users/{username}` and below |
+| User aliases | `PUT`/`DELETE /address/aliases/{username}/sources/{alias}` |
+| Rename | `POST /users/{username}/rename/{newUsername}` |
+| Delegation | `PUT`/`DELETE /users/{username}/authorizedUsers/{delegated}`, `DELETE /users/{username}/authorizedUsers` |
+| Team mailboxes | `PUT`/`DELETE /domains/{domain}/team-mailboxes/{name}` and its `members/{member}` |
+| Mailing lists | `PUT`/`DELETE` on `/mailingLists/{address}` and its `members` and `owners` |
 
-| Profile | Equivalent to |
-|---------|---------------|
-| `classpath://linagora-mail-functional-baseline-ldap-rest.json` | `linagora-mail-functional-baseline.json` + LDAP-rest denials |
-| `classpath://linagora-mail-functional-admin-ldap-rest.json` | `linagora-mail-functional-admin.json` + LDAP-rest denials |
+Reads stay granted. Forwards, identities — ldap-rest names the default one after the directory, but
+signatures and other identities are the console's — and what lies inside a team mailbox (folders, extra
+ACLs, extra senders, quota) stay manageable, as far as the level allows.
+
+Six profiles include it first, three levels per mode:
+
+| Level | Global mode | Functional mode (domain-scoped) |
+|---|---|---|
+| god | `linagora-mail-god-ldap-rest.json`: denials, then `/*` | `linagora-mail-functional-god-ldap-rest.json`: denials + `linagora-mail-functional-baseline.json` |
+| admin | `linagora-mail-admin-profile-ldap-rest.json`: denials + `linagora-mail-admin-profile.json` | `linagora-mail-functional-admin-ldap-rest.json`: denials + `linagora-mail-functional-admin.json` |
+| support | `linagora-mail-support-profile-ldap-rest.json`: denials + `linagora-mail-support-profile.json` | `linagora-mail-functional-support-ldap-rest.json`: denials + `linagora-mail-functional-support.json` |
+
+The functional god is the baseline, not `/*`: `/*` captures no `{domain}`, so it would escape the
+`domain` restriction and reach every tenant. Functional profiles are meant to be deployed with that
+restriction, see below.
 
 ### Baselines are tenant-scoped only if you scope them
 

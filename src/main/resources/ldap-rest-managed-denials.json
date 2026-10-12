@@ -53,5 +53,36 @@
       "DELETE"
     ],
     "endpoint": "/mailingLists/{address}/owners/{owner}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/users/{username}/authorizedUsers/{delegated}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "DELETE"
+    ],
+    "endpoint": "/users/{username}/authorizedUsers"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{teamMailboxDomain}/team-mailboxes/{teamMailbox}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{teamMailboxDomain}/team-mailboxes/{teamMailbox}/members/{member}"
   }
 ]

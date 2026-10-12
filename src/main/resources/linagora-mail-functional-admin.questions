@@ -95,7 +95,7 @@
     "users.message-search": false,
     "users.provision-templates": true,
     "users.quota": true,
-    "users.quota-explorer": true,
+    "users.quota-explorer": false,
     "users.quota.clear": true,
     "users.quota.save": true,
     "users.ratelimits": true,
