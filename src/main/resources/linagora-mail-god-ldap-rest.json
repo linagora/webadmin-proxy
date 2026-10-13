@@ -1,0 +1,8 @@
+[
+  {
+    "include": "classpath://ldap-rest-managed-denials.json"
+  },
+  {
+    "endpoint": "/*"
+  }
+]
