@@ -1,5 +1,8 @@
-# Build stage: assembles the runtime layout from the prebuilt Maven artifacts
-# (the Jenkinsfile runs `mvn install` before this Docker build).
+# Build stage: assembles the runtime layout from the prebuilt Maven artifacts.
+# target/dependency comes from an explicit `mvn dependency:copy-dependencies
+# -DincludeScope=runtime -DoutputDirectory=target/dependency` run before this build
+# (done in the Jenkinsfile; run the same command locally). `mvn install` alone does
+# NOT populate it.
 FROM eclipse-temurin:27-jre-resolute AS deps
 WORKDIR /app
 COPY target/dependency/ /app/dependencies/
