@@ -14,7 +14,7 @@ FROM eclipse-temurin:27-jre-resolute
 # GID/UID 1000 already exist in the base image (group 'ubuntu' / user 'ubuntu');
 # rename them instead of adding a duplicate.
 RUN groupmod -n webadmin ubuntu && usermod -l webadmin -d /home/webadmin -m -s /usr/sbin/nologin ubuntu \
-    && chmod 755 /root
+    && chmod 755 /root && chown webadmin:webadmin /root
 
 WORKDIR /root
 COPY --from=deps --chown=webadmin:webadmin /app/ /root/
