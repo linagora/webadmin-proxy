@@ -1,0 +1,12 @@
+# Allow only what the Dockerfile COPYs; everything else (git metadata,
+# sources, CI files) stays out of the build context.
+*
+!target/dependency
+!target/classes
+!src/main/conf
+!target/webadmin-proxy-*.jar
+# The jar glob above also matches auxiliary artifacts — exclude them so the
+# COPY target/webadmin-proxy-*.jar resolves to the single main jar.
+target/*-sources.jar
+target/*-test-sources.jar
+target/*-tests.jar
