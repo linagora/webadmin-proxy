@@ -64,9 +64,12 @@ pipeline {
 
                     echo "Docker tag: ${env.DOCKER_TAG}"
 
-                    sh 'docker load -i target/jib-image.tar'
+                    // Build the image from the Dockerfile using the artifacts produced
+                    // by the Compile stage (multi-stage build copies them into the image;
+                    // no Maven rebuild inside Docker). Replaces the former jib buildTar.
+                    sh 'docker build -t linagora/webadmin-proxy:latest .'
                     sh 'docker tag linagora/webadmin-proxy:latest linagora/webadmin-proxy:$DOCKER_TAG'
-                    sh 'docker login -u $DOCKER_HUB_CREDENTIAL_USR -p $DOCKER_HUB_CREDENTIAL_PSW'
+                    sh 'echo $DOCKER_HUB_CREDENTIAL_PSW | docker login -u $DOCKER_HUB_CREDENTIAL_USR --password-stdin'
                     sh 'docker push linagora/webadmin-proxy:$DOCKER_TAG'
                 }
             }
