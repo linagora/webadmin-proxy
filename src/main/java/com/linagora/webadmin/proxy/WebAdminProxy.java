@@ -17,6 +17,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -48,11 +49,16 @@ import reactor.netty.http.server.HttpServerResponse;
 @Singleton
 public class WebAdminProxy implements Startable {
 
+    private static final class FormBodyException extends RuntimeException {
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxy.class);
     private static final String HOST_HEADER = "Host";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String METHOD_OVERRIDE_HEADER = "X-HTTP-Method-Override";
     private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER, METHOD_OVERRIDE_HEADER);
+    private static final String CONTENT_TYPE_HEADER = "Content-Type";
+    private static final List<String> FORM_CONTENT_TYPES = List.of("application/x-www-form-urlencoded", "multipart/form-data");
     private static final String ALLOWED_CORS_HEADERS = "Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING";
     private static final String EXPOSED_CORS_HEADERS = "X-Group, X-Insertion-Id";
     private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";
@@ -143,6 +149,7 @@ public class WebAdminProxy implements Startable {
             .flatMap(payload -> tokenCache.resolve(token)
                 .flatMap(auth -> auth.checkUserAuthorized()
                     .then(checkUrlAccess(auth, request))
+                    .then(checkNotAForm(request, payload))
                     .then(dispatchToBackend(request, response, payload, auth))
                     .contextWrite(ReactorUtils.context("request",
                         MDCBuilder.create()
@@ -151,6 +158,8 @@ public class WebAdminProxy implements Startable {
                 .onErrorResume(AccessForbiddenException.class, e ->
                     ReactorUtils.logAsMono(() -> LOGGER.info("Access forbidden", e))
                         .then(response.status(403).send().then()))
+                .onErrorResume(FormBodyException.class, e ->
+                    response.status(HttpResponseStatus.UNSUPPORTED_MEDIA_TYPE).send().then())
                 .onErrorResume(OidcAuthenticationException.class, e ->
                     ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
                         .then(response.status(401).send().then())));
@@ -198,6 +207,17 @@ public class WebAdminProxy implements Startable {
             response.header("Access-Control-Allow-Credentials", "true");
             response.header("Vary", "Origin");
         }
+    }
+
+    /**
+     * Backends read form fields as query parameters, which rules only see in the URI.
+     * No proxied route takes a form.
+     */
+    private static Mono<Void> checkNotAForm(HttpServerRequest request, byte[] payload) {
+        boolean isForm = payload.length > 0 && request.requestHeaders().getAll(CONTENT_TYPE_HEADER).stream()
+            .map(contentType -> contentType.trim().toLowerCase(Locale.US))
+            .anyMatch(contentType -> FORM_CONTENT_TYPES.stream().anyMatch(contentType::startsWith));
+        return isForm ? Mono.error(new FormBodyException()) : Mono.empty();
     }
 
     private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, HttpServerRequest request) {
