@@ -49,7 +49,8 @@ public class WebAdminProxy implements Startable {
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxy.class);
     private static final String HOST_HEADER = "Host";
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER);
+    private static final String METHOD_OVERRIDE_HEADER = "X-HTTP-Method-Override";
+    private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER, METHOD_OVERRIDE_HEADER);
     private static final String ALLOWED_CORS_HEADERS = "Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING";
     private static final String EXPOSED_CORS_HEADERS = "X-Group, X-Insertion-Id";
     private static final String ALLOWED_URLS_PATH = "/.proxy/allowed/urls";

@@ -225,6 +225,25 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Test
+    void shouldNotForwardMethodOverrideHeader() {
+        stubValidToken();
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+
+        given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+            .header("x-http-method-override", "DELETE")
+        .when()
+            .get("/domains")
+        .then()
+            .statusCode(200);
+
+        backendMock.verify(request().withMethod("GET").withPath("/domains"), VerificationTimes.once());
+        backendMock.verify(request().withHeader("X-HTTP-Method-Override", ".*"), VerificationTimes.exactly(0));
+    }
+
+    @Test
     void shouldForwardResponseHeaders() {
         stubValidToken();
         backendMock.when(request().withMethod("GET").withPath("/domains"))
