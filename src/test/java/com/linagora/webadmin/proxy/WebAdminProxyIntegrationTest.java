@@ -328,6 +328,32 @@ class WebAdminProxyIntegrationTest {
         assertThat(sendRawRequest("GET", target)).isEqualTo(200);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"domains", "http:/localhost/x", "localhost:8000/x", "*", "?a=b"})
+    void shouldReturn400WithoutCallingBackendWhenTargetDoesNotStartWithSlash(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("GET", target)).isEqualTo(400);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @Test
+    void shouldReturn400WithoutSendingTokenElsewhereWhenTargetIsAbsolute() throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+        try (ClientAndServer otherServer = ClientAndServer.startClientAndServer(0)) {
+            MockServerClient otherMock = new MockServerClient("localhost", otherServer.getLocalPort());
+            otherMock.when(request()).respond(response().withStatusCode(200));
+
+            assertThat(sendRawRequest("GET", "http://localhost:" + otherServer.getLocalPort() + "/x")).isEqualTo(400);
+
+            otherMock.verify(request(), VerificationTimes.exactly(0));
+            backendMock.verify(request(), VerificationTimes.exactly(0));
+        }
+    }
+
     @Test
     void shouldForwardResponseHeaders() {
         stubValidToken();

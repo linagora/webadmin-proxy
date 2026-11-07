@@ -163,7 +163,8 @@ public class WebAdminProxy implements Startable {
     private static boolean isCanonicalTarget(String uri) {
         int queryIdx = uri.indexOf('?');
         String rawPath = queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
-        return uri.indexOf('#') < 0
+        return uri.startsWith("/")
+            && uri.indexOf('#') < 0
             && !rawPath.contains("//")
             && hasNoDotSegment(rawPath);
     }
