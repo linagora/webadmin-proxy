@@ -13,7 +13,9 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -159,7 +161,21 @@ public class WebAdminProxy implements Startable {
      * hence targets another component would interpret differently are refused.
      */
     private static boolean isCanonicalTarget(String uri) {
-        return uri.indexOf('#') < 0;
+        int queryIdx = uri.indexOf('?');
+        String rawPath = queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
+        return uri.indexOf('#') < 0
+            && !rawPath.contains("//")
+            && hasNoDotSegment(rawPath);
+    }
+
+    private static boolean hasNoDotSegment(String rawPath) {
+        try {
+            return Arrays.stream(rawPath.split("/"))
+                .map(segment -> URLDecoder.decode(segment, StandardCharsets.UTF_8))
+                .noneMatch(segment -> segment.equals(".") || segment.equals(".."));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private void addCorsHeaders(HttpServerRequest request, HttpServerResponse response) {

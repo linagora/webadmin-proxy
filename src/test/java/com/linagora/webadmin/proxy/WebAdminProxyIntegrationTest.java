@@ -291,6 +291,43 @@ class WebAdminProxyIntegrationTest {
         assertThat(sendRawRequest("GET", "/users/a%23b@example.com?x=%23")).isEqualTo(200);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "//users/bob@example.com?action=deleteData",
+        "/users//bob@example.com?action=deleteData",
+        "/users/bob@example.com//",
+        "/domains/example.com//aliases/other.com",
+        "/users/./bob@example.com",
+        "/users/../domains",
+        "/users/..",
+        "/users/%2e%2e/domains",
+        "/users/.%2E/domains",
+        "/users/%2E/bob@example.com",
+        "/users/%zz"})
+    void shouldReturn400WithoutCallingBackendWhenPathIsNotCanonical(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("POST", target)).isEqualTo(400);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/",
+        "/tasks/",
+        "/mailRepositories/var%2Fmail%2Ferror/mails",
+        "/users/.bob@example.com",
+        "/users/bob..smith@example.com",
+        "/domains?redirect=http://example.com//a/../b"})
+    void shouldForwardCanonicalTargets(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("GET", target)).isEqualTo(200);
+    }
+
     @Test
     void shouldForwardResponseHeaders() {
         stubValidToken();
