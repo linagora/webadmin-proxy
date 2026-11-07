@@ -250,13 +250,19 @@ class WebAdminProxyIntegrationTest {
 
     /** Browsers and HTTP clients normalize request targets: only a socket sends them untouched. */
     private int sendRawRequest(String method, String target) throws IOException {
+        return sendRawRequest(method, target, "", "");
+    }
+
+    private int sendRawRequest(String method, String target, String headers, String body) throws IOException {
         try (Socket socket = new Socket("localhost", proxyServer.getPort())) {
             socket.setSoTimeout(10_000);
             OutputStream out = socket.getOutputStream();
             out.write((method + " " + target + " HTTP/1.1\r\n"
                 + "Host: localhost\r\n"
                 + "Authorization: Bearer " + VALID_TOKEN + "\r\n"
-                + "Connection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                + headers
+                + "Connection: close\r\n\r\n"
+                + body).getBytes(StandardCharsets.UTF_8));
             out.flush();
             String statusLine = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8)).readLine();
             return Integer.parseInt(statusLine.split(" ")[1]);
@@ -352,6 +358,48 @@ class WebAdminProxyIntegrationTest {
             otherMock.verify(request(), VerificationTimes.exactly(0));
             backendMock.verify(request(), VerificationTimes.exactly(0));
         }
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "application/x-www-form-urlencoded",
+        "application/x-www-form-urlencoded; charset=UTF-8",
+        "Application/X-WWW-Form-URLEncoded",
+        " application/x-www-form-urlencoded",
+        "multipart/form-data; boundary=x"})
+    void shouldReturn415WithoutCallingBackendWhenBodyIsAForm(String contentType) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("POST", "/users/bob@example.com",
+            "Content-Type: " + contentType + "\r\nContent-Length: 17\r\n", "action=deleteData")).isEqualTo(415);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @Test
+    void shouldForwardEmptyBodyWhateverItsContentType() throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("POST", "/users/bob@example.com?action=x",
+            "Content-Type: application/x-www-form-urlencoded\r\nContent-Length: 0\r\n", "")).isEqualTo(200);
+    }
+
+    @Test
+    void shouldForwardJsonBody() {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+            .contentType("application/json")
+            .body("{}")
+        .when()
+            .post("/users/bob@example.com")
+        .then()
+            .statusCode(200);
     }
 
     @Test

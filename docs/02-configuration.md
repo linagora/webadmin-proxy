@@ -154,6 +154,10 @@ Whatever the client's `allowed.urls`, a request target is refused with `400` whe
 with `/`, contains a raw `#`, has an empty path segment (`//`) or a dot segment (`.`, `..`, encoded or
 not). Encoded slashes (`%2F`) and a trailing slash remain valid.
 
+Requests with a non-empty form body (`application/x-www-form-urlencoded`, `multipart/form-data`) are
+refused with `415` once authorized: backends read form fields as query parameters, which rules cannot see.
+Clients must send the `Content-Type` of what they post, as `curl -d` defaults to a form.
+
 `*` matches the empty string but not a missing separator: `/tasks/*` matches `/tasks/` and
 `/tasks/abc` but **not** `/tasks`. Profiles that mean "the collection and everything under it" list
 both, as `{"endpoint": "/tasks"}, {"endpoint": "/tasks/*"}`.
