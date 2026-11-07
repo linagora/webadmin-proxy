@@ -277,8 +277,10 @@ itself); unfiltered `GET /mailingLists`, which would return every tenant's lists
 only through the `?domain=` filter; copying the users of *another* domain into a domain address book
 (`POST /domains/{domain}/addressbooks/{addressBookId}?action=copyFrom&sourceDomain=…`), which would
 let one tenant read another tenant's directory — the two leading rules allow the copy only when
-`sourceDomain` equals `{domain}` and deny every other `action=copyFrom`, with or without `ldapFilter`,
-even for holders without a `domain` restriction such as the calendar support profile; and, as with
+`action=copyFrom` and `sourceDomain` equals `{domain}`, and deny any other request carrying
+`sourceDomain`, whatever the spelling of the action (the backend matches it case-insensitively) and
+with or without `ldapFilter`, even for holders without a `domain` restriction such as the calendar
+support profile. A copy without `sourceDomain` is refused by the backend; and, as with
 the mail baseline, every unscoped endpoint.
 
 **Use as**: a starting point, same caveats as the mail baseline.

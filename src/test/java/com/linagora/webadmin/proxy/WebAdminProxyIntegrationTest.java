@@ -36,6 +36,8 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -3463,8 +3465,22 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
-        void shouldReturn403WhenCopyingIntoDomainAddressBookWithoutSourceDomain() {
+        void shouldLeaveCopyWithoutSourceDomainToTheBackend() {
             proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom")
+                .then().statusCode(200);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"copyfrom", "COPYFROM", "%20copyFrom", "copyFrom%20"})
+        void shouldReturn403WhenCopyingAnotherDomainWithAnotherActionSpelling(String action) {
+            proxy().urlEncodingEnabled(false)
+                .when().post("/domains/example.com/addressbooks/dab?action=" + action + "&sourceDomain=other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingOwnDomainWithAnotherActionSpelling() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyfrom&sourceDomain=example.com")
                 .then().statusCode(403);
         }
 
@@ -3607,6 +3623,12 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldReturn403WhenCopyingAnotherDomainIntoDomainAddressBook() {
             proxy().when().post("/domains/teachers.school.org/addressbooks/dab?action=copyFrom&sourceDomain=students.school.org")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenCopyingAnotherDomainWithAnotherActionSpelling() {
+            proxy().when().post("/domains/teachers.school.org/addressbooks/dab?action=copyfrom&sourceDomain=students.school.org")
                 .then().statusCode(403);
         }
     }
