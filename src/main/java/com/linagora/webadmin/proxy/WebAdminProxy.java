@@ -13,6 +13,7 @@
 
 package com.linagora.webadmin.proxy;
 
+import java.io.ByteArrayOutputStream;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
@@ -35,6 +36,7 @@ import org.reactivestreams.Publisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import io.netty.channel.ChannelException;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import reactor.core.publisher.Mono;
 import reactor.netty.ByteBufFlux;
@@ -52,12 +54,22 @@ public class WebAdminProxy implements Startable {
     private static final class FormBodyException extends RuntimeException {
     }
 
+    private static final class RequestBodyTooLargeException extends RuntimeException {
+    }
+
+    private static final class RequestBodyNotReceivedException extends RuntimeException {
+        RequestBodyNotReceivedException(Throwable cause) {
+            super(cause);
+        }
+    }
+
     private static final Logger LOGGER = LoggerFactory.getLogger(WebAdminProxy.class);
     private static final String HOST_HEADER = "Host";
     private static final String AUTHORIZATION_HEADER = "Authorization";
     private static final String METHOD_OVERRIDE_HEADER = "X-HTTP-Method-Override";
     private static final Set<String> RESERVED_HEADERS = Set.of(HOST_HEADER, AUTHORIZATION_HEADER, METHOD_OVERRIDE_HEADER);
     private static final String CONTENT_TYPE_HEADER = "Content-Type";
+    private static final String CONTENT_LENGTH_HEADER = "Content-Length";
     private static final List<String> FORM_CONTENT_TYPES = List.of("application/x-www-form-urlencoded", "multipart/form-data");
     private static final String ALLOWED_CORS_HEADERS = "Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING";
     private static final String EXPOSED_CORS_HEADERS = "X-Group, X-Insertion-Id";
@@ -94,6 +106,8 @@ public class WebAdminProxy implements Startable {
     public void start() {
         server = HttpServer.create()
             .port(configuration.port())
+            .readTimeout(configuration.requestReadTimeout())
+            .requestTimeout(configuration.requestTimeout())
             .handle(this::forwardRequest)
             .bindNow();
         LOGGER.info("WebAdmin proxy listening on port {}", server.port());
@@ -144,25 +158,48 @@ public class WebAdminProxy implements Startable {
             }
         }
 
-        return request.receive().aggregate().asByteArray()
-            .switchIfEmpty(Mono.just(new byte[0]))
-            .flatMap(payload -> tokenCache.resolve(token)
-                .flatMap(auth -> auth.checkUserAuthorized()
-                    .then(checkUrlAccess(auth, request))
-                    .then(checkNotAForm(request, payload))
-                    .then(dispatchToBackend(request, response, payload, auth))
-                    .contextWrite(ReactorUtils.context("request",
-                        MDCBuilder.create()
-                            .addToContext(MDCBuilder.USER, auth.user())
-                            .addToContext("clientId", auth.clientId()))))
-                .onErrorResume(AccessForbiddenException.class, e ->
-                    ReactorUtils.logAsMono(() -> LOGGER.info("Access forbidden", e))
-                        .then(response.status(403).send().then()))
-                .onErrorResume(FormBodyException.class, e ->
-                    response.status(HttpResponseStatus.UNSUPPORTED_MEDIA_TYPE).send().then())
-                .onErrorResume(OidcAuthenticationException.class, e ->
-                    ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
-                        .then(response.status(401).send().then())));
+        return tokenCache.resolve(token)
+            .flatMap(auth -> auth.checkUserAuthorized()
+                .then(checkUrlAccess(auth, request))
+                .then(readBody(request))
+                .flatMap(payload -> checkNotAForm(request, payload)
+                    .then(dispatchToBackend(request, response, payload, auth)))
+                .contextWrite(ReactorUtils.context("request",
+                    MDCBuilder.create()
+                        .addToContext(MDCBuilder.USER, auth.user())
+                        .addToContext("clientId", auth.clientId()))))
+            .onErrorResume(AccessForbiddenException.class, e ->
+                ReactorUtils.logAsMono(() -> LOGGER.info("Access forbidden", e))
+                    .then(response.status(403).send().then()))
+            .onErrorResume(FormBodyException.class, e ->
+                response.status(HttpResponseStatus.UNSUPPORTED_MEDIA_TYPE).send().then())
+            .onErrorResume(RequestBodyTooLargeException.class, e ->
+                response.status(HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE).send().then())
+            .onErrorResume(RequestBodyNotReceivedException.class, e ->
+                response.status(HttpResponseStatus.REQUEST_TIMEOUT).send().then())
+            .onErrorResume(OidcAuthenticationException.class, e ->
+                ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
+                    .then(response.status(401).send().then()));
+    }
+
+    private Mono<byte[]> readBody(HttpServerRequest request) {
+        long maxSize = configuration.maxRequestBodySize();
+        return Mono.defer(() -> {
+            String contentLength = request.requestHeaders().get(CONTENT_LENGTH_HEADER);
+            if (contentLength != null && Long.parseLong(contentLength) > maxSize) {
+                return Mono.error(new RequestBodyTooLargeException());
+            }
+            ByteArrayOutputStream body = new ByteArrayOutputStream();
+            return request.receive().asByteArray()
+                .doOnNext(chunk -> {
+                    if (body.size() + (long) chunk.length > maxSize) {
+                        throw new RequestBodyTooLargeException();
+                    }
+                    body.writeBytes(chunk);
+                })
+                .onErrorMap(ChannelException.class, RequestBodyNotReceivedException::new)
+                .then(Mono.fromSupplier(body::toByteArray));
+        });
     }
 
     /**

@@ -32,6 +32,7 @@ import java.util.regex.Pattern;
 
 import org.apache.james.jwt.introspection.IntrospectionEndpoint;
 import org.apache.james.util.DurationParser;
+import org.apache.james.util.Size;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -43,7 +44,14 @@ public record WebAdminProxyConfiguration(int port,
                                           List<Map.Entry<String, ClientConfiguration>> clients,
                                           Optional<Integer> selfAdminPort,
                                           boolean selfAdminEnabled,
-                                          List<String> corsAllowOrigins) {
+                                          List<String> corsAllowOrigins,
+                                          long maxRequestBodySize,
+                                          Duration requestReadTimeout,
+                                          Duration requestTimeout) {
+
+    static final long DEFAULT_MAX_REQUEST_BODY_SIZE = 100L * 1024 * 1024;
+    static final Duration DEFAULT_REQUEST_READ_TIMEOUT = Duration.ofSeconds(30);
+    static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofMinutes(5);
 
     public List<ClientConfiguration> clientsForId(String clientId) {
         return clients.stream()
@@ -63,6 +71,9 @@ public record WebAdminProxyConfiguration(int port,
         private Optional<Integer> selfAdminPort = Optional.empty();
         private boolean selfAdminEnabled = false;
         private List<String> corsAllowOrigins = new ArrayList<>();
+        private long maxRequestBodySize = DEFAULT_MAX_REQUEST_BODY_SIZE;
+        private Duration requestReadTimeout = DEFAULT_REQUEST_READ_TIMEOUT;
+        private Duration requestTimeout = DEFAULT_REQUEST_TIMEOUT;
 
         public Builder port(int port) {
             this.port = port;
@@ -105,8 +116,24 @@ public record WebAdminProxyConfiguration(int port,
             return this;
         }
 
+        public Builder maxRequestBodySize(long maxRequestBodySize) {
+            this.maxRequestBodySize = maxRequestBodySize;
+            return this;
+        }
+
+        public Builder requestReadTimeout(Duration requestReadTimeout) {
+            this.requestReadTimeout = requestReadTimeout;
+            return this;
+        }
+
+        public Builder requestTimeout(Duration requestTimeout) {
+            this.requestTimeout = requestTimeout;
+            return this;
+        }
+
         public WebAdminProxyConfiguration build() {
-            return new WebAdminProxyConfiguration(port, oidcConfiguration, List.copyOf(clients), selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins));
+            return new WebAdminProxyConfiguration(port, oidcConfiguration, List.copyOf(clients), selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins),
+                maxRequestBodySize, requestReadTimeout, requestTimeout);
         }
     }
 
@@ -137,6 +164,15 @@ public record WebAdminProxyConfiguration(int port,
             builder.selfAdminEnabled();
         }
         parseCorsOrigins(root).ifPresent(builder::corsAllowOrigins);
+        Optional.ofNullable(root.get("request.body.max.size"))
+            .map(node -> Size.parse(resolve(node.asText())).asBytes())
+            .ifPresent(builder::maxRequestBodySize);
+        Optional.ofNullable(root.get("request.read.timeout"))
+            .map(node -> DurationParser.parse(resolve(node.asText()), ChronoUnit.SECONDS))
+            .ifPresent(builder::requestReadTimeout);
+        Optional.ofNullable(root.get("request.timeout"))
+            .map(node -> DurationParser.parse(resolve(node.asText()), ChronoUnit.SECONDS))
+            .ifPresent(builder::requestTimeout);
 
         WebAdminProxyConfiguration config = builder.build();
         LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audiences={}, userClaim={}, clients={}",
