@@ -4099,6 +4099,36 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void shouldReturn403WhenWritingDomainAliases() {
+            proxy().when().put("/domains/example.com/aliases/other.com").then().statusCode(403);
+            proxy().when().delete("/domains/example.com/aliases/other.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowReadingDomainAliases() {
+            proxy().when().get("/domains/example.com/aliases").then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowUserAliasOfOwnDomain() {
+            proxy().when().get("/address/aliases/bob@example.com").then().statusCode(200);
+            proxy().when().put("/address/aliases/bob@example.com/sources/robert@example.com").then().statusCode(200);
+            proxy().when().delete("/address/aliases/bob@example.com/sources/robert@example.com").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenUserAliasSourceIsOfAnotherDomain() {
+            proxy().when().put("/address/aliases/bob@example.com/sources/sales@other.com").then().statusCode(403);
+            proxy().when().delete("/address/aliases/bob@example.com/sources/sales@other.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenUserAliasTargetIsOfAnotherDomain() {
+            proxy().when().put("/address/aliases/bob@other.com/sources/sales@example.com").then().statusCode(403);
+            proxy().when().put("/address/aliases/bob@other.com/sources/sales@other.com").then().statusCode(403);
+        }
+
+        @Test
         void shouldAllowUserAdministrationOfOwnDomain() {
             proxy().when().get("/users/bob@example.com/mailboxes").then().statusCode(200);
             proxy().when().put("/users/bob@example.com/mailboxes/Archive").then().statusCode(200);
@@ -4230,6 +4260,12 @@ class WebAdminProxyIntegrationTest {
         @Override
         boolean domainScoped() {
             return true;
+        }
+
+        @Test
+        void shouldReturn403WhenWritingDomainAliases() {
+            proxy().when().put("/domains/example.com/aliases/other.com").then().statusCode(403);
+            proxy().when().delete("/domains/example.com/aliases/other.com").then().statusCode(403);
         }
 
         @Test
@@ -4653,6 +4689,12 @@ class WebAdminProxyIntegrationTest {
         @Override
         String profile() {
             return "linagora-mail-functional-god-ldap-rest.json";
+        }
+
+        @Test
+        void shouldReturn403WhenWritingDomainAliases() {
+            proxy().when().put("/domains/example.com/aliases/other.com").then().statusCode(403);
+            proxy().when().delete("/domains/example.com/aliases/other.com").then().statusCode(403);
         }
 
         @Test

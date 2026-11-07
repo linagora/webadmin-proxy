@@ -7,8 +7,8 @@
   "language": "en",
   "answers": {
     "domains.aliases": true,
-    "domains.aliases.add": true,
-    "domains.aliases.delete": true,
+    "domains.aliases.add": false,
+    "domains.aliases.delete": false,
     "domains.quota": true,
     "domains.quota.save": true,
     "domains.ratelimits": true,
