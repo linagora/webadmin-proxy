@@ -159,6 +159,11 @@ or twice in the path (`/domains/{domain}/team-mailboxes/{mailbox}/members/%@{dom
 matches only if every occurrence captures the same value. Variable names are free-form
 (`{query_params}`, `{task-id}`).
 
+A query parameter named by a rule must appear exactly once for an allow rule to match. When it is
+repeated, an allow rule does not match and a deny rule treats that parameter as matching: backends
+may read a different occurrence than the proxy. Parameter names are compared after URL decoding.
+Repeating a parameter no rule names is unaffected.
+
 Mind the direction of that constraint on a **deny** rule: repeating `{domain}` narrows what the rule
 matches, so it also narrows what it denies. A deny on `…/members/%@{domain}` does not stop adding
 `eve@other.com` to a team mailbox of your domain, and a later `/domains/{domain}/*` allow lets it
