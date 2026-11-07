@@ -271,6 +271,11 @@ listing (`/quota/users?domain={domain}`); IMAP/network channels; and per-domain 
 `/tasks`, no global `/quota`. It also does not grant `/mappings/user/{username}` — only
 `/mappings/sources/…` — so the frontend's user Mappings tab, which gates on the former, stays hidden.
 
+The three leading rules keep tenants apart on the routes involving two domains: writing a domain
+alias (`/domains/{domain}/aliases/{source}`) is left to platform operators, as `{domain}` only binds
+the destination; and writing a user alias (`/address/aliases/{address}/sources/{source}`) requires
+both addresses in `{domain}`. Reads stay granted.
+
 **Use as**: a starting point, combined with deny rules, entry-point reads, and a `domain` restriction.
 
 ### functional-admin-calendar-baseline.json
