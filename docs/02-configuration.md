@@ -54,6 +54,9 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values. Tokens matching none of the configured audiences are rejected with 401 |
 | `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`) |
 | `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
+| `request.body.max.size` | no | Largest request body accepted, held in memory once the caller is authorized; above it the proxy answers `413`. Format: `100M`, `1G`, etc. Default: `100M` |
+| `request.read.timeout` | no | Longest pause allowed between two reads of a request body. Default: `30s` |
+| `request.timeout` | no | Longest time allowed to receive a whole request. Does not cover the backend's response time. Default: `5m` |
 | `cors.allow.origin` | no | Allowed CORS origin(s). Accepts a single string or a JSON array. Use `"*"` to allow all origins, or list specific origins (e.g. `["https://app.example.com", "https://admin.example.com"]`). Absent = no CORS headers added. Preflight responses advertise `Content-Type, Authorization, Accept, I-KNOW-WHAT-I-M-DOING` as allowed request headers. Responses expose `X-Group, X-Insertion-Id` (`Access-Control-Expose-Headers`) so that browsers can read dead-letter event locations |
 | `self.webadmin.enabled` | no | `true` to start the self-admin HTTP server. Defaults to `false` |
 | `self.webadmin.port` | no | Port for the self-admin server. Required when `self.webadmin.enabled` is `true`. Use `0` for a random port |

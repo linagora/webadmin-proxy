@@ -70,6 +70,28 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void requestLimitsShouldHaveDefaults() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
+            assertThat(config.maxRequestBodySize()).isEqualTo(100L * 1024 * 1024);
+            assertThat(config.requestReadTimeout()).isEqualTo(Duration.ofSeconds(30));
+            assertThat(config.requestTimeout()).isEqualTo(Duration.ofMinutes(5));
+        }
+
+        @Test
+        void shouldParseRequestLimits() throws Exception {
+            String json = MINIMAL.replaceFirst("\\{", """
+                {
+                  "request.body.max.size": "2M",
+                  "request.read.timeout": "10s",
+                  "request.timeout": "2m",
+                """);
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+            assertThat(config.maxRequestBodySize()).isEqualTo(2L * 1024 * 1024);
+            assertThat(config.requestReadTimeout()).isEqualTo(Duration.ofSeconds(10));
+            assertThat(config.requestTimeout()).isEqualTo(Duration.ofMinutes(2));
+        }
+
+        @Test
         void shouldParseOidcUserInfoUrl() throws Exception {
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
             assertThat(config.oidcConfiguration().userInfoUrl().toString())

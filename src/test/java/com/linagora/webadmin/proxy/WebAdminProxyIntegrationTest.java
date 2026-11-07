@@ -1059,6 +1059,122 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    class RequestBodyHandling {
+
+        private void restartProxy(long maxBodySize, Duration readTimeout, Duration requestTimeout) throws Exception {
+            proxyServer.stop();
+            WebAdminProxyConfiguration base = buildConfig();
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(base.oidcConfiguration())
+                .clients(base.clients())
+                .maxRequestBodySize(maxBodySize)
+                .requestReadTimeout(readTimeout)
+                .requestTimeout(requestTimeout)
+                .build()));
+            proxyServer.start();
+        }
+
+        private void restartProxyWithMaxBodySize(long maxBodySize) throws Exception {
+            restartProxy(maxBodySize, Duration.ofSeconds(30), Duration.ofMinutes(5));
+        }
+
+        private static final String CHUNKED_HELLO_WORLD = "5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n";
+
+        @Test
+        void shouldReturn401WithoutWaitingForBodyWhenTokenIsRejected() throws Exception {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON).withBody("{\"active\":false}"));
+
+            assertThat(sendRawRequest("POST", "/domains", "Content-Length: 10737418240\r\n", "")).isEqualTo(401);
+        }
+
+        @Test
+        void shouldReturn413WithoutWaitingForBodyWhenContentLengthExceedsLimit() throws Exception {
+            restartProxyWithMaxBodySize(10);
+            stubValidToken();
+            stubBackendForAnyRequest();
+
+            assertThat(sendRawRequest("POST", "/domains", "Content-Length: 11\r\n", "")).isEqualTo(413);
+
+            backendMock.verify(request(), VerificationTimes.exactly(0));
+        }
+
+        @Test
+        void shouldReturn413WhenChunkedBodyExceedsLimit() throws Exception {
+            restartProxyWithMaxBodySize(9);
+            stubValidToken();
+            stubBackendForAnyRequest();
+
+            assertThat(sendRawRequest("POST", "/domains", "Transfer-Encoding: chunked\r\n", CHUNKED_HELLO_WORLD)).isEqualTo(413);
+
+            backendMock.verify(request(), VerificationTimes.exactly(0));
+        }
+
+        @Test
+        void shouldForwardBodyAtLimit() throws Exception {
+            restartProxyWithMaxBodySize(10);
+            stubValidToken();
+            stubBackendForAnyRequest();
+
+            assertThat(sendRawRequest("POST", "/domains", "Content-Length: 10\r\n", "helloworld")).isEqualTo(200);
+
+            backendMock.verify(request().withBody("helloworld"), VerificationTimes.once());
+        }
+
+        @Test
+        void shouldForwardChunkedBodyAtLimit() throws Exception {
+            restartProxyWithMaxBodySize(10);
+            stubValidToken();
+            stubBackendForAnyRequest();
+
+            assertThat(sendRawRequest("POST", "/domains", "Transfer-Encoding: chunked\r\n", CHUNKED_HELLO_WORLD)).isEqualTo(200);
+
+            backendMock.verify(request().withBody("helloworld"), VerificationTimes.once());
+        }
+
+        @Test
+        void shouldNotKeepWaitingForStalledBodyOnReadTimeout() throws Exception {
+            restartProxy(1024, Duration.ofMillis(500), Duration.ofMinutes(5));
+            assertStalledBodyIsAbandoned();
+        }
+
+        @Test
+        void shouldNotKeepWaitingForStalledBodyOnRequestTimeout() throws Exception {
+            restartProxy(1024, Duration.ofSeconds(30), Duration.ofMillis(500));
+            assertStalledBodyIsAbandoned();
+        }
+
+        private void assertStalledBodyIsAbandoned() throws Exception {
+            stubValidToken();
+            stubBackendForAnyRequest();
+
+            try (Socket socket = new Socket("localhost", proxyServer.getPort())) {
+                socket.setSoTimeout(10_000);
+                socket.getOutputStream().write(("POST /domains HTTP/1.1\r\nHost: localhost\r\n"
+                    + "Authorization: Bearer " + VALID_TOKEN + "\r\n"
+                    + "Content-Length: 10\r\n\r\nhello").getBytes(StandardCharsets.UTF_8));
+                socket.getOutputStream().flush();
+
+                String statusLine = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8)).readLine();
+
+                assertThat(statusLine == null || statusLine.contains(" 408 ")).as("status line: %s", statusLine).isTrue();
+            }
+
+            backendMock.verify(request(), VerificationTimes.exactly(0));
+        }
+
+        @Test
+        void requestTimeoutsShouldNotApplyToBackendResponseTime() throws Exception {
+            restartProxy(1024, Duration.ofMillis(500), Duration.ofSeconds(1));
+            stubValidToken();
+            backendMock.when(request()).respond(response().withStatusCode(200)
+                .withDelay(java.util.concurrent.TimeUnit.SECONDS, 2));
+
+            assertThat(sendRawRequest("POST", "/domains", "Content-Length: 5\r\n", "hello")).isEqualTo(200);
+        }
+    }
+
+    @Nested
     class DeniedRules {
 
         private ClientAndServer oidcMockServer;
