@@ -150,6 +150,10 @@ Examples:
 - `/domains/{domain}/aliases/*` — any sub-path under aliases
 - `/quota?scope={scope}` — captures a query parameter
 
+Whatever the client's `allowed.urls`, a request target is refused with `400` when it does not start
+with `/`, contains a raw `#`, has an empty path segment (`//`) or a dot segment (`.`, `..`, encoded or
+not). Encoded slashes (`%2F`) and a trailing slash remain valid.
+
 `*` matches the empty string but not a missing separator: `/tasks/*` matches `/tasks/` and
 `/tasks/abc` but **not** `/tasks`. Profiles that mean "the collection and everything under it" list
 both, as `{"endpoint": "/tasks"}, {"endpoint": "/tasks/*"}`.
