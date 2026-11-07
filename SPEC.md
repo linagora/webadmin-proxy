@@ -240,6 +240,8 @@ If no allowed.url is specified then all are allowed!
 
 `{varname}` and `%@{varname}` captured values are available to `url.patterns.restrictions`. Query parameters require their full name to be present in the request; extra query parameters are ignored.
 
+A parameter named by a rule must appear exactly once for an allow rule to match. When it is repeated, an allow rule does not match and a deny rule treats that parameter as matching, because backends may read a different occurrence than the proxy. Repetition of parameters no rule names is unaffected.
+
 If `verb` is omitted from a rule, all HTTP verbs are allowed.
 
 ### Step 5: domain validation

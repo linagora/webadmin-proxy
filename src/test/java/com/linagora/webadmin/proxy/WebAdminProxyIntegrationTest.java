@@ -961,6 +961,25 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void deniedRuleShouldReturn403WhenItsConstrainedParamIsRepeated() throws Exception {
+            startProxyWith(List.of(
+                new AllowedUrl(List.of("POST"), "/users/{user}?action=deleteData", true),
+                new AllowedUrl(List.of(), "/users/*")));
+            stubValidToken();
+            backendMock.when(request().withPath("/users/bob@example.com"))
+                .respond(response().withStatusCode(200));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().post("/users/bob@example.com?action=deleteData&action=noop")
+                .then().statusCode(403);
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().post("/users/bob@example.com?action=noop&action=deleteData")
+                .then().statusCode(403);
+        }
+
+        @Test
         void wildcardAfterDeniedRuleShouldAllowOtherPaths() throws Exception {
             startProxyWith(List.of(
                 new AllowedUrl(List.of(), "/domains/{domain}/forbidden", true),
@@ -3446,6 +3465,22 @@ class WebAdminProxyIntegrationTest {
         @Test
         void shouldReturn403WhenCopyingIntoDomainAddressBookWithoutSourceDomain() {
             proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenRepeatingSourceDomainToHideAnotherDomain() {
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom&sourceDomain=other.com&sourceDomain=example.com")
+                .then().statusCode(403);
+            proxy().when().post("/domains/example.com/addressbooks/dab?action=copyFrom&sourceDomain=example.com&sourceDomain=other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenRepeatingDomainFilterToHideAnotherDomain() {
+            proxy().when().get("/mailingLists?domain=other.com&domain=example.com")
+                .then().statusCode(403);
+            proxy().when().get("/mailingLists?domain=example.com&domain=other.com")
                 .then().statusCode(403);
         }
     }

@@ -98,15 +98,22 @@ public class AllowedUrl {
             captured.put(varName, m.group(pathGroupNames.get(varName)));
         }
 
-        Map<String, String> requestParams = parseQueryString(queryString);
+        Map<String, List<String>> requestParams = parseQueryString(queryString);
         for (Map.Entry<String, CompiledQueryParam> entry : compiledQueryParams.entrySet()) {
             String paramName = entry.getKey();
             CompiledQueryParam cqp = entry.getValue();
-            String requestValue = requestParams.get(paramName);
-            if (requestValue == null) {
+            List<String> requestValues = requestParams.get(paramName);
+            if (requestValues == null) {
                 return Optional.empty();
             }
-            Matcher qm = cqp.pattern().matcher(requestValue);
+            if (requestValues.size() > 1) {
+                // Which value the backend reads is not ours to guess: an allow does not grant it, a deny refuses it.
+                if (denied) {
+                    continue;
+                }
+                return Optional.empty();
+            }
+            Matcher qm = cqp.pattern().matcher(requestValues.get(0));
             if (!qm.matches()) {
                 return Optional.empty();
             }
@@ -166,20 +173,17 @@ public class AllowedUrl {
         }
     }
 
-    private static Map<String, String> parseQueryString(String queryString) {
+    private static Map<String, List<String>> parseQueryString(String queryString) {
         if (queryString.isEmpty()) {
             return Map.of();
         }
-        Map<String, String> result = new HashMap<>();
+        Map<String, List<String>> result = new HashMap<>();
         for (String param : queryString.split("&")) {
             int eq = param.indexOf('=');
-            if (eq >= 0) {
-                result.put(
-                    URLDecoder.decode(param.substring(0, eq), StandardCharsets.UTF_8),
-                    URLDecoder.decode(param.substring(eq + 1), StandardCharsets.UTF_8));
-            } else {
-                result.put(URLDecoder.decode(param, StandardCharsets.UTF_8), "");
-            }
+            String name = eq >= 0 ? param.substring(0, eq) : param;
+            String value = eq >= 0 ? param.substring(eq + 1) : "";
+            result.computeIfAbsent(URLDecoder.decode(name, StandardCharsets.UTF_8), key -> new ArrayList<>())
+                .add(URLDecoder.decode(value, StandardCharsets.UTF_8));
         }
         return result;
     }

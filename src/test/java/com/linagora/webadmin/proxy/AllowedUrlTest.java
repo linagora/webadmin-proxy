@@ -381,6 +381,82 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class RepeatedQueryParameters {
+
+        @Test
+        void allowRuleShouldNotMatchRepeatedConstrainedParamWhateverTheOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            assertThat(rule.matches("DELETE", "/messages?user=victim@other.com&olderThan=1d&user=me@mine.com")).isFalse();
+            assertThat(rule.matches("DELETE", "/messages?user=me@mine.com&olderThan=1d&user=victim@other.com")).isFalse();
+        }
+
+        @Test
+        void allowRuleShouldNotMatchRepeatedConstrainedParamEvenWithSameValue() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?domain={domain}");
+            assertThat(rule.matches("GET", "/quota/users?domain=mine.com&domain=mine.com")).isFalse();
+        }
+
+        @Test
+        void allowRuleShouldNotMatchRepeatedParamWhenOneNameIsPercentEncoded() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?domain={domain}");
+            assertThat(rule.matches("GET", "/quota/users?%64omain=other.com&domain=mine.com")).isFalse();
+        }
+
+        @Test
+        void allowRuleShouldNotMatchRepeatedValuelessParam() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota");
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota&hasSpecificQuota=true")).isFalse();
+        }
+
+        @Test
+        void allowRuleWithSeveralParamsShouldNotMatchWhenOneIsRepeated() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/addressbooks/{id}?action=copyFrom&sourceDomain={domain}");
+            assertThat(rule.matches("POST", "/domains/mine.com/addressbooks/x?action=copyFrom&sourceDomain=other.com&sourceDomain=mine.com")).isFalse();
+            assertThat(rule.matches("POST", "/domains/mine.com/addressbooks/x?action=copyFrom&sourceDomain=mine.com&sourceDomain=other.com")).isFalse();
+        }
+
+        @Test
+        void allowRuleShouldIgnoreRepetitionOfUnconstrainedParam() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?domain={domain}");
+            assertThat(rule.match("GET", "/quota/users?domain=mine.com&component=a&component=b"))
+                .contains(Map.of("domain", "mine.com"));
+        }
+
+        @Test
+        void allowRuleWithoutQueryConstraintShouldAcceptRepeatedParams() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/healthcheck/checks");
+            assertThat(rule.matches("GET", "/healthcheck/checks?check=a&check=b")).isTrue();
+        }
+
+        @Test
+        void denyRuleShouldMatchRepeatedConstrainedParamWhateverTheOrder() {
+            AllowedUrl rule = new AllowedUrl(List.of("POST"), "/users/{user}?action=deleteData", true);
+            assertThat(rule.matches("POST", "/users/bob@x?action=deleteData&action=noop")).isTrue();
+            assertThat(rule.matches("POST", "/users/bob@x?action=noop&action=deleteData")).isTrue();
+        }
+
+        @Test
+        void denyRuleShouldMatchRepeatedParamWhenOneNameIsPercentEncoded() {
+            AllowedUrl rule = new AllowedUrl(List.of("POST"), "/users/{user}?action=deleteData", true);
+            assertThat(rule.matches("POST", "/users/bob@x?%61ction=deleteData&action=noop")).isTrue();
+        }
+
+        @Test
+        void denyRuleShouldStillRequireItsOtherParams() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}?action=deleteData&force=true", true);
+            assertThat(rule.matches("POST", "/users/bob@x?action=a&action=b")).isFalse();
+            assertThat(rule.matches("POST", "/users/bob@x?action=a&action=b&force=false")).isFalse();
+            assertThat(rule.matches("POST", "/users/bob@x?action=a&action=b&force=true")).isTrue();
+        }
+
+        @Test
+        void denyRuleShouldStillNotMatchSingleOtherValue() {
+            AllowedUrl rule = new AllowedUrl(List.of("POST"), "/users/{user}?action=deleteData", true);
+            assertThat(rule.matches("POST", "/users/bob@x?action=noop")).isFalse();
+        }
+    }
+
+    @Nested
     class MultiVariableRestrictions {
 
         @Test
