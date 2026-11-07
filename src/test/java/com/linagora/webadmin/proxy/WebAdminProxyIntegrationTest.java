@@ -19,6 +19,11 @@ import static org.mockserver.model.HttpRequest.request;
 import static org.mockserver.model.HttpResponse.response;
 import static org.mockserver.model.MediaType.APPLICATION_JSON;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -241,6 +246,49 @@ class WebAdminProxyIntegrationTest {
 
         backendMock.verify(request().withMethod("GET").withPath("/domains"), VerificationTimes.once());
         backendMock.verify(request().withHeader("X-HTTP-Method-Override", ".*"), VerificationTimes.exactly(0));
+    }
+
+    /** Browsers and HTTP clients normalize request targets: only a socket sends them untouched. */
+    private int sendRawRequest(String method, String target) throws IOException {
+        try (Socket socket = new Socket("localhost", proxyServer.getPort())) {
+            socket.setSoTimeout(10_000);
+            OutputStream out = socket.getOutputStream();
+            out.write((method + " " + target + " HTTP/1.1\r\n"
+                + "Host: localhost\r\n"
+                + "Authorization: Bearer " + VALID_TOKEN + "\r\n"
+                + "Connection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            String statusLine = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8)).readLine();
+            return Integer.parseInt(statusLine.split(" ")[1]);
+        }
+    }
+
+    private void stubBackendForAnyRequest() {
+        backendMock.when(request()).respond(response().withStatusCode(200));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/domains#",
+        "/domains?limit=10#",
+        "/messages?olderThan=1d#&user=me@example.com",
+        "/quota/users?limit=10#&domain=example.com",
+        "/users/bob@example.com?action=deleteData#"})
+    void shouldReturn400WithoutCallingBackendWhenTargetCarriesRawFragment(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("POST", target)).isEqualTo(400);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @Test
+    void shouldForwardPercentEncodedHash() throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("GET", "/users/a%23b@example.com?x=%23")).isEqualTo(200);
     }
 
     @Test

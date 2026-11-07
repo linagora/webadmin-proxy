@@ -113,6 +113,10 @@ public class WebAdminProxy implements Startable {
             return response.status(204).send().then();
         }
 
+        if (!isCanonicalTarget(request.uri())) {
+            return response.status(400).send();
+        }
+
         String authHeader = request.requestHeaders().get(AUTHORIZATION_HEADER);
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return response.status(401).send();
@@ -148,6 +152,14 @@ public class WebAdminProxy implements Startable {
                 .onErrorResume(OidcAuthenticationException.class, e ->
                     ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
                         .then(response.status(401).send().then())));
+    }
+
+    /**
+     * Rules are evaluated on the raw target and the backend must end up routing on that same string,
+     * hence targets another component would interpret differently are refused.
+     */
+    private static boolean isCanonicalTarget(String uri) {
+        return uri.indexOf('#') < 0;
     }
 
     private void addCorsHeaders(HttpServerRequest request, HttpServerResponse response) {
