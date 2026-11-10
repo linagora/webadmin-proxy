@@ -3098,6 +3098,10 @@ class WebAdminProxyIntegrationTest {
         private WebAdminProxyGuiceServer proxyServer;
 
         private void stubOidc(MockServerClient oidcMock, String extraClaims) {
+            stubOidc(oidcMock, USER_EMAIL, extraClaims);
+        }
+
+        private void stubOidc(MockServerClient oidcMock, String email, String extraClaims) {
             oidcMock.when(request().withMethod("POST").withPath("/introspect"))
                 .respond(response().withStatusCode(200)
                     .withContentType(APPLICATION_JSON)
@@ -3105,7 +3109,7 @@ class WebAdminProxyIntegrationTest {
             oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
                 .respond(response().withStatusCode(200)
                     .withContentType(APPLICATION_JSON)
-                    .withBody("{\"email\":\"" + USER_EMAIL + "\"" + extraClaims + "}"));
+                    .withBody("{\"email\":\"" + email + "\"" + extraClaims + "}"));
         }
 
         private WebAdminProxyGuiceServer startProxy(MockServerClient oidcMock) throws Exception {
@@ -3114,6 +3118,10 @@ class WebAdminProxyIntegrationTest {
 
         private WebAdminProxyGuiceServer startProxyWithOidc(MockServerClient oidcMock, String extraClaims) throws Exception {
             stubOidc(oidcMock, extraClaims);
+            return startProxyWithoutStubs();
+        }
+
+        private WebAdminProxyGuiceServer startProxyWithoutStubs() throws Exception {
             int oidcPort = oidcMockServer.getLocalPort();
             URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
             URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
@@ -3207,6 +3215,22 @@ class WebAdminProxyIntegrationTest {
             .then()
                 .statusCode(200)
                 .body("domain", org.hamcrest.Matchers.equalTo("example.com"));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"admin@", "a@@mine.example", "a@b@c.example", "admin@ "})
+        void myDomainShouldReturn403WhenEmailHasNoSingleDomainPart(String email) throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            stubOidc(oidcMock, email, "");
+            proxyServer = startProxyWithoutStubs();
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(403);
         }
 
         @Test
