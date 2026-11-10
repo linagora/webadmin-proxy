@@ -839,6 +839,42 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class WildcardLineTerminators {
+
+        @Test
+        void starShouldMatchEncodedLineTerminators() {
+            AllowedUrl rule = new AllowedUrl(List.of("DELETE"), "/users/%@{domain}/*", true);
+
+            assertThat(rule.matches("DELETE", "/users/bob@mine.example/x%0A")).isTrue();
+            assertThat(rule.matches("DELETE", "/users/bob@mine.example/%0D")).isTrue();
+            assertThat(rule.matches("DELETE", "/users/bob@mine.example/%C2%85")).isTrue();
+            assertThat(rule.matches("DELETE", "/users/bob@mine.example/%E2%80%A8")).isTrue();
+            assertThat(rule.matches("DELETE", "/users/bob@mine.example/%E2%80%A9")).isTrue();
+        }
+
+        @Test
+        void starShouldMatchALineTerminatorBeforeTheQuery() {
+            AllowedUrl rule = new AllowedUrl(List.of("PUT", "DELETE"), "/events/*", true);
+
+            assertThat(rule.matches("DELETE", "/events/%E2%80%A8?")).isTrue();
+        }
+
+        @Test
+        void valuelessFlagShouldMatchAValueHoldingALineTerminator() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{targetDomain}/addressbooks/{id}?sourceDomain", true);
+
+            assertThat(rule.matches("POST", "/domains/mine.example/addressbooks/book?action=copyFrom&sourceDomain=other.com%0A")).isTrue();
+        }
+
+        @Test
+        void starValueShouldMatchAValueHoldingALineTerminator() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota=*", true);
+
+            assertThat(rule.matches("GET", "/quota/users?hasSpecificQuota=%0Ax")).isTrue();
+        }
+    }
+
+    @Nested
     class OperatorTests {
 
         @Test

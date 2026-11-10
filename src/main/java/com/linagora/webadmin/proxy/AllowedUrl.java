@@ -160,7 +160,7 @@ public class AllowedUrl {
             int eq = param.indexOf('=');
             if (eq < 0) {
                 // Valueless 'flag': the parameter must be present, with any value or none.
-                putOnce(result, param, new CompiledQueryParam(Pattern.compile("^.*$"), List.of(), Map.of()), endpointPattern);
+                putOnce(result, param, new CompiledQueryParam(Pattern.compile("^.*$", Pattern.DOTALL), List.of(), Map.of()), endpointPattern);
                 continue;
             }
             String paramName = param.substring(0, eq);
@@ -190,9 +190,13 @@ public class AllowedUrl {
             && param.indexOf('{', 1) < 0 && param.indexOf('=') < 0;
     }
 
+    /**
+     * DOTALL: '*' matches what it is decoded to, line terminators included ({@code %0A}, {@code %E2%80%A8}...),
+     * otherwise a deny rule written with '*' would be skipped for such a target.
+     */
     private static Pattern compile(String regex, String endpointPattern) {
         try {
-            return Pattern.compile(regex);
+            return Pattern.compile(regex, Pattern.DOTALL);
         } catch (PatternSyntaxException e) {
             throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern + "': " + e.getDescription(), e);
         }
