@@ -73,7 +73,7 @@ Each element in the `clients` array is a single-key object. The key is the OIDC 
 | `expected.claims` | no | Map of claim name → required value. All listed claims must be present in userinfo with exactly the specified value |
 | `expected.scopes` | no | List of OAuth 2.0 scopes that must all be present in the token's `scope` field (from the introspection response, RFC 7662). If empty or absent, no scope restriction is applied. Extra scopes in the token are ignored |
 | `authorized.users` | no | Allowlist of user identities (as resolved by `oidc.claim.authenticated.user`). If non-empty, only listed users are admitted. Useful when OIDC claim configuration is impractical |
-| `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins |
+| `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins. An `include` holding no rule is refused at startup: to deny every call, write `{"denied": true, "endpoint": "/*"}` |
 | `url.patterns.restrictions` | no | Constraints on URL template variables, validated against OIDC claims |
 
 ### allowed.urls rules
