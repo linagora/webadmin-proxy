@@ -208,10 +208,31 @@ public class WebAdminProxy implements Startable {
     private static boolean isCanonicalTarget(String uri) {
         int queryIdx = uri.indexOf('?');
         String rawPath = queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
+        String rawQuery = queryIdx >= 0 ? uri.substring(queryIdx + 1) : "";
         return uri.startsWith("/")
             && uri.indexOf('#') < 0
             && !rawPath.contains("//")
-            && hasNoDotSegment(rawPath);
+            && hasNoDotSegment(rawPath)
+            && hasDecodableQuery(rawQuery);
+    }
+
+    /**
+     * Rules decode every query parameter name and value: a malformed escape is refused here, so that rule
+     * evaluation never fails half way through (a deny rule unable to decode must not let a later allow rule match).
+     */
+    private static boolean hasDecodableQuery(String rawQuery) {
+        return Arrays.stream(rawQuery.split("&"))
+            .flatMap(param -> Arrays.stream(param.split("=", 2)))
+            .allMatch(WebAdminProxy::isDecodable);
+    }
+
+    private static boolean isDecodable(String component) {
+        try {
+            URLDecoder.decode(component, StandardCharsets.UTF_8);
+            return true;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
     }
 
     private static boolean hasNoDotSegment(String rawPath) {

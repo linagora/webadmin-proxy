@@ -14,6 +14,7 @@
 package com.linagora.webadmin.proxy;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
@@ -511,6 +512,17 @@ class AllowedUrlTest {
         void allowRuleWithoutQueryConstraintShouldAcceptRepeatedParams() {
             AllowedUrl rule = new AllowedUrl(List.of(), "/healthcheck/checks");
             assertThat(rule.matches("GET", "/healthcheck/checks?check=a&check=b")).isTrue();
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {
+            "/domains/mine.example/users?limit=%",
+            "/domains/mine.example/users?limit=%2",
+            "/domains/mine.example/users?limit=%zz",
+            "/domains/mine.example/users?%u=1"})
+        void ruleWithoutQueryConstraintShouldNotThrowOnMalformedQueryEscape(String uri) {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/domains/{domain}/users");
+            assertThatCode(() -> rule.match("GET", uri)).doesNotThrowAnyException();
         }
 
         @Test
