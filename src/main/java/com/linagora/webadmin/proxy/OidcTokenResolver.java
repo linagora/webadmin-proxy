@@ -91,19 +91,11 @@ public class OidcTokenResolver {
             .orElseThrow(() -> new AccessForbiddenException(
                 "No applicable configuration for user '" + user + "' with client '" + clientId + "'"));
 
-        Optional<String> sessionId = textualSid(introspect.json())
-            .or(() -> userInfo.claimByPropertyName(SID_CLAIM));
+        // The sid is a case-sensitive string (OpenID Connect Front-Channel Logout 1.0 §3): a non-string
+        // value is ignored, like a missing one, rather than turned into text.
+        Optional<String> sessionId = textual(introspect.json(), SID_CLAIM)
+            .or(() -> userInfo.textualClaim(SID_CLAIM));
         return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo, sessionId));
-    }
-
-    /**
-     * The sid is a case-sensitive string (OpenID Connect Front-Channel Logout 1.0 §3): a non-string
-     * value is ignored, like a missing one, rather than turned into text.
-     */
-    private static Optional<String> textualSid(JsonNode json) {
-        return Optional.ofNullable(json.get(SID_CLAIM))
-            .filter(JsonNode::isTextual)
-            .map(JsonNode::textValue);
     }
 
     private boolean isUserAuthorized(ClientConfiguration config, String user) {
