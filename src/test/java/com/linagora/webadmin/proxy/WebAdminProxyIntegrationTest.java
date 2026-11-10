@@ -769,6 +769,27 @@ class WebAdminProxyIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(401);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", " ", "\\t"})
+    void shouldReturn401WhenUserClaimIsBlank(String blankUser) {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200)
+                .withContentType(APPLICATION_JSON)
+                .withBody("{\"email\":\"" + blankUser + "\"}"));
+
+        Response response = given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains");
+
+        assertThat(response.statusCode()).isEqualTo(401);
+    }
+
     @Test
     void shouldReturn401WhenMissingClientId() {
         oidcMock.when(request().withMethod("POST").withPath("/introspect"))
