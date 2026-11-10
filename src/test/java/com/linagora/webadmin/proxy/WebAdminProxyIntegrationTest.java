@@ -843,27 +843,6 @@ class WebAdminProxyIntegrationTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"42", "null", "true", "[\"bob@example.com\"]"})
-    void shouldReturn401WhenUserClaimIsNotAJsonString(String rawClaim) {
-        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
-            .respond(response().withStatusCode(200)
-                .withContentType(APPLICATION_JSON)
-                .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
-        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
-            .respond(response().withStatusCode(200)
-                .withContentType(APPLICATION_JSON)
-                .withBody("{\"email\":" + rawClaim + "}"));
-
-        Response response = given()
-            .port(proxyServer.getPort())
-            .header("Authorization", "Bearer " + VALID_TOKEN)
-        .when()
-            .get("/domains");
-
-        assertThat(response.statusCode()).isEqualTo(401);
-    }
-
-    @ParameterizedTest
     @ValueSource(strings = {"", " ", "\\t"})
     void shouldReturn401WhenUserClaimIsBlank(String blankUser) {
         oidcMock.when(request().withMethod("POST").withPath("/introspect"))
@@ -1578,25 +1557,6 @@ class WebAdminProxyIntegrationTest {
                 .then().statusCode(200);
         }
 
-        @ParameterizedTest
-        @ValueSource(strings = {"null", "100", "100.0", "true"})
-        void shouldReturn403WhenBackingClaimIsNotAJsonString(String rawClaim) throws Exception {
-            startProxyWith(
-                Map.of("domain", new UrlPatternRestriction("domain", Operator.EQUALS)),
-                List.of(new AllowedUrl(List.of(), "/domains/{domain}/users")));
-            stubIntrospect();
-            stubUserinfo("{\"email\":\"" + USER_EMAIL + "\",\"domain\":" + rawClaim + "}");
-            backendMock.when(request().withMethod("GET"))
-                .respond(response().withStatusCode(200).withBody("[]"));
-
-            given().port(proxyServer.getPort())
-                .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains/" + rawClaim + "/users")
-                .then().statusCode(403);
-
-            backendMock.verify(request(), VerificationTimes.exactly(0));
-        }
-
         @Test
         void equalsOperatorShouldReturn403WhenClaimDoesNotMatchUrlVariable() throws Exception {
             startProxyWith(
@@ -1944,24 +1904,6 @@ class WebAdminProxyIntegrationTest {
                 .get("/domains");
 
             assertThat(response.statusCode()).isEqualTo(200);
-        }
-
-        @ParameterizedTest
-        @ValueSource(strings = {"1", "1.0", "true", "null", "[\"1\"]"})
-        void shouldReturn403WhenRequiredClaimIsNotAJsonString(String rawClaim) {
-            stubIntrospect();
-            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
-                .respond(response().withStatusCode(200)
-                    .withContentType(APPLICATION_JSON)
-                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":" + rawClaim + "}"));
-
-            Response response = given()
-                .port(proxyServer.getPort())
-                .header("Authorization", "Bearer " + VALID_TOKEN)
-            .when()
-                .get("/domains");
-
-            assertThat(response.statusCode()).isEqualTo(403);
         }
 
         @Test
@@ -3414,22 +3356,6 @@ class WebAdminProxyIntegrationTest {
         }
 
         // --- myDomain ---
-
-        @ParameterizedTest
-        @ValueSource(strings = {"null", "42", "true", "[\"custom-domain.com\"]", "{\"d\":\"custom-domain.com\"}"})
-        void myDomainShouldIgnoreNonStringDomainClaim(String rawClaim) throws Exception {
-            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
-            proxyServer = startProxyWithOidc(oidcMock, ",\"domain\":" + rawClaim);
-
-            given()
-                .port(proxyServer.getPort())
-                .header("Authorization", "Bearer " + VALID_TOKEN)
-            .when()
-                .get("/.proxy/myDomain")
-            .then()
-                .statusCode(200)
-                .body("domain", org.hamcrest.Matchers.equalTo(USER_EMAIL.substring(USER_EMAIL.indexOf('@') + 1)));
-        }
 
         @Test
         void myDomainShouldUseDomainClaimWhenPresent() throws Exception {

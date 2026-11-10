@@ -311,8 +311,7 @@ public class WebAdminProxy implements Startable {
             if (urlVarValue == null) {
                 continue;
             }
-            // A null, number or boolean claim is no value: read as its text it would match "null", "100.0"...
-            Optional<String> claimOpt = auth.userInfo().textualClaim(restriction.backingClaim());
+            Optional<String> claimOpt = auth.userInfo().claimByPropertyName(restriction.backingClaim());
             if (claimOpt.isEmpty()) {
                 return Mono.error(new AccessForbiddenException(
                     "Missing required claim '" + restriction.backingClaim() + "' for URL validation"));
