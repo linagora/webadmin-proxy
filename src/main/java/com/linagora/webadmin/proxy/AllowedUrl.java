@@ -87,7 +87,7 @@ public class AllowedUrl {
         String rawPath = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
         String queryString = queryIdx >= 0 ? fullUri.substring(queryIdx + 1) : "";
 
-        String path = URLDecoder.decode(rawPath, StandardCharsets.UTF_8);
+        String path = decodePath(rawPath);
         Matcher m = compiledPathPattern.matcher(path);
         if (!m.matches()) {
             return Optional.empty();
@@ -183,6 +183,14 @@ public class AllowedUrl {
         } catch (PatternSyntaxException e) {
             throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern + "': " + e.getDescription(), e);
         }
+    }
+
+    /**
+     * Percent-decodes a request path per RFC 3986: unlike form decoding, '+' is kept literally,
+     * which is how backends read paths.
+     */
+    static String decodePath(String rawPath) {
+        return URLDecoder.decode(rawPath.replace("+", "%2B"), StandardCharsets.UTF_8);
     }
 
     private static Map<String, List<String>> parseQueryString(String queryString) {

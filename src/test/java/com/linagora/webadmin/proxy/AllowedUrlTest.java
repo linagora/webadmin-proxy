@@ -29,6 +29,36 @@ import com.linagora.webadmin.proxy.UrlPatternRestriction.Operator;
 
 class AllowedUrlTest {
 
+    // --- Path decoding: RFC 3986, '+' is not a space ---
+
+    @Test
+    void plusInPathShouldBeCapturedLiterally() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}");
+        assertThat(rule.match("GET", "/users/a+b@mine.example"))
+            .contains(Map.of("user", "a+b@mine.example"));
+    }
+
+    @Test
+    void encodedPlusInPathShouldBeCapturedAsPlus() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}");
+        assertThat(rule.match("GET", "/users/a%2Bb@mine.example"))
+            .contains(Map.of("user", "a+b@mine.example"));
+    }
+
+    @Test
+    void encodedSpaceInPathShouldBeCapturedAsSpace() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}");
+        assertThat(rule.match("GET", "/users/a%20b@mine.example"))
+            .contains(Map.of("user", "a b@mine.example"));
+    }
+
+    @Test
+    void plusInQueryShouldStillBeFormDecoded() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users?name={name}");
+        assertThat(rule.match("GET", "/users?name=a+b"))
+            .contains(Map.of("name", "a b"));
+    }
+
     // --- Template variable: single segment only ---
 
     @Test
