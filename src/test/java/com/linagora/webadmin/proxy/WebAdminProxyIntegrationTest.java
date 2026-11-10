@@ -4305,6 +4305,13 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void shouldReturn403WhenRenamingIntoAnotherDomain() {
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com?action=rename").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com?action=rename&force").then().statusCode(403);
+        }
+
+        @Test
         void shouldAllowTeamMailboxManagementOfOwnDomain() {
             proxy().when().put("/domains/example.com/team-mailboxes/sales").then().statusCode(200);
             proxy().when().put("/domains/example.com/team-mailboxes/sales/members/bob@example.com").then().statusCode(200);
@@ -4440,6 +4447,14 @@ class WebAdminProxyIntegrationTest {
             proxy().when().post("/users/bob@example.com?action=deleteData").then().statusCode(200);
             proxy().when().delete("/users/bob@example.com/mailboxes").then().statusCode(200);
             proxy().when().post("/users/bob@example.com/mails?limit=20&offset=0").then().statusCode(200);
+            proxy().when().post("/users/bob@example.com/rename/robert@example.com?action=rename").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenRenamingIntoAnotherDomain() {
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com?action=rename").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/rename/victim@other.com?action=rename&force").then().statusCode(403);
         }
 
         @Test
