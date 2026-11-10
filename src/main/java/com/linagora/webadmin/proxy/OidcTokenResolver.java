@@ -67,7 +67,7 @@ public class OidcTokenResolver {
                 "Invalid audience. Expected one of: " + oidcConfiguration.audiences()));
         }
 
-        String user = userInfo.textualClaim(oidcConfiguration.userClaim())
+        String user = userInfo.claimByPropertyName(oidcConfiguration.userClaim())
             .filter(claim -> !claim.isBlank())
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing required claim '" + oidcConfiguration.userClaim() + "' in userinfo response"));
@@ -116,7 +116,7 @@ public class OidcTokenResolver {
 
     private boolean claimsMatch(ClientConfiguration config, UserinfoResponse userInfo) {
         for (Map.Entry<String, String> claim : config.expectedClaims().entrySet()) {
-            Optional<String> actual = userInfo.textualClaim(claim.getKey());
+            Optional<String> actual = userInfo.claimByPropertyName(claim.getKey());
             if (actual.isEmpty() || !claim.getValue().equals(actual.get())) {
                 return false;
             }
