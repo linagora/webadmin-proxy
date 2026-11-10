@@ -189,6 +189,9 @@ The query half is matched by **presence and value, per listed parameter**:
 - Parameters the request carries but the pattern does not list are **ignored**. `?domain={domain}`
   matches `?domain=a.com&limit=10`.
 - Order is irrelevant: `?a=1&b=2` matches `?b=2&a=1`.
+- A parameter may be listed only once per pattern. `?user=%@{domain}&user={domain}` or
+  `?action=a&action=b` is a startup error: only one constraint would otherwise apply, silently
+  widening the rule.
 - Request parameter values are URL-decoded before comparison.
 - A pattern with **no** query half imposes no query constraint at all — `/mappings/sources/%@{domain}`
   matches `GET /mappings/sources/bob@d.com?type=alias`. This is the usual way to allow an endpoint
