@@ -67,14 +67,14 @@ public class OidcTokenResolver {
                 "Invalid audience. Expected one of: " + oidcConfiguration.audiences()));
         }
 
-        String user = userInfo.claimByPropertyName(oidcConfiguration.userClaim())
+        String user = userInfo.textualClaim(oidcConfiguration.userClaim())
             .filter(claim -> !claim.isBlank())
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing required claim '" + oidcConfiguration.userClaim() + "' in userinfo response"));
 
-        String clientId = introspect.clientId()
+        String clientId = textual(introspect.json(), "client_id")
             .orElseThrow(() -> new OidcAuthenticationException(
-                "Missing 'client_id' in introspect response (RFC 7662)"));
+                "Missing or non-string 'client_id' in introspect response (RFC 7662)"));
 
         List<ClientConfiguration> entriesForClientId = clients.stream()
             .filter(e -> e.getKey().equals(clientId))
@@ -124,7 +124,7 @@ public class OidcTokenResolver {
 
     private boolean claimsMatch(ClientConfiguration config, UserinfoResponse userInfo) {
         for (Map.Entry<String, String> claim : config.expectedClaims().entrySet()) {
-            Optional<String> actual = userInfo.claimByPropertyName(claim.getKey());
+            Optional<String> actual = userInfo.textualClaim(claim.getKey());
             if (actual.isEmpty() || !claim.getValue().equals(actual.get())) {
                 return false;
             }
@@ -140,12 +140,22 @@ public class OidcTokenResolver {
         }
         if (audNode.isArray()) {
             for (JsonNode node : audNode) {
-                if (expected.contains(node.asText())) {
+                if (node.isTextual() && expected.contains(node.textValue())) {
                     return true;
                 }
             }
             return false;
         }
-        return expected.contains(audNode.asText());
+        return audNode.isTextual() && expected.contains(audNode.textValue());
+    }
+
+    /**
+     * The member only when it is a JSON string: values the configuration describes as strings must not be
+     * met by a number, a boolean or a null that prints as one ({@code "client_id": true} is no client "true").
+     */
+    static Optional<String> textual(JsonNode json, String name) {
+        return Optional.ofNullable(json.get(name))
+            .filter(JsonNode::isTextual)
+            .map(JsonNode::textValue);
     }
 }
