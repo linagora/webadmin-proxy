@@ -79,7 +79,7 @@ public class AllowedUrl {
      * matches the given method and full URI, empty otherwise.
      */
     public Optional<Map<String, String>> match(String method, String fullUri) {
-        if (!verbs.isEmpty() && verbs.stream().noneMatch(v -> v.equalsIgnoreCase(method))) {
+        if (!coversVerb(method)) {
             return Optional.empty();
         }
 
@@ -128,6 +128,16 @@ public class AllowedUrl {
         }
 
         return Optional.of(captured);
+    }
+
+    /**
+     * A rule listing GET also covers HEAD: HEAD is GET without content (RFC 9110 section 9.3.2) and the
+     * backend serves it with its GET route, so a GET deny rule must refuse it too.
+     */
+    private boolean coversVerb(String method) {
+        return verbs.isEmpty()
+            || verbs.stream().anyMatch(verb -> verb.equalsIgnoreCase(method)
+                || (verb.equalsIgnoreCase("GET") && method.equalsIgnoreCase("HEAD")));
     }
 
     public boolean matches(String method, String fullUri) {

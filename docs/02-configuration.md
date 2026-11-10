@@ -97,7 +97,7 @@ Each rule is either a regular endpoint rule or an include directive:
 | Field | Required | Description |
 |-------|----------|-------------|
 | `endpoint` | yes | Endpoint pattern (see pattern syntax below) |
-| `verb` | no | List of HTTP verbs this rule applies to (e.g. `["GET", "PUT"]`). If omitted, the rule matches all verbs |
+| `verb` | no | List of HTTP verbs this rule applies to (e.g. `["GET", "PUT"]`). If omitted, the rule matches all verbs. A rule listing `GET` also matches `HEAD` (HEAD is GET without content, and the backend serves it with its GET route): denying `GET` also denies `HEAD` |
 | `denied` | no | `true` to explicitly deny matching requests with 403. Defaults to `false` |
 
 The field is `verb`, singular. `verbs` is accepted as a deprecated alias and behaves identically; a
