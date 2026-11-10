@@ -98,6 +98,9 @@ public class AllowedUrl {
             captured.put(varName, m.group(pathGroupNames.get(varName)));
         }
 
+        if (compiledQueryParams.isEmpty()) {
+            return Optional.of(captured);
+        }
         Map<String, List<String>> requestParams = parseQueryString(queryString);
         for (Map.Entry<String, CompiledQueryParam> entry : compiledQueryParams.entrySet()) {
             String paramName = entry.getKey();

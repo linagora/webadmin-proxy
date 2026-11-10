@@ -321,6 +321,36 @@ class WebAdminProxyIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "/users/bob@example.com?x=%",
+        "/users/bob@example.com?x=%2",
+        "/users/bob@example.com?x=%zz",
+        "/users/bob@example.com?%u=1",
+        "/users/bob@example.com?%=1",
+        "/users/bob@example.com?a=1&b=%zz",
+        "/mailingLists?domain=mine.example/;/%z"})
+    void shouldReturn400WithoutCallingBackendWhenQueryHasMalformedEscape(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("GET", target)).isEqualTo(400);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "/users/bob@example.com?x=%25",
+        "/users/bob@example.com?x=a=b&&y",
+        "/users/bob@example.com?"})
+    void shouldForwardQueryWithWellFormedEscapes(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("GET", target)).isEqualTo(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
         "/",
         "/tasks/",
         "/mailRepositories/var%2Fmail%2Ferror/mails",
