@@ -92,13 +92,24 @@ public class BackchannelLogoutRoutes implements PublicRoutes {
             String payloadJson = new String(payloadBytes, StandardCharsets.UTF_8);
             Map<String, Object> payload = objectMapper.readValue(payloadJson, new TypeReference<>() {});
             return Optional.ofNullable(payload.get(SID_CLAIM))
-                .map(Object::toString)
+                .map(BackchannelLogoutRoutes::asStringSid)
                 .orElseThrow(() -> new IllegalArgumentException("Missing 'sid' claim in logout token"));
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalArgumentException("Unable to decode logout token", e);
         }
+    }
+
+    /**
+     * The sid is a case-sensitive string (OpenID Connect Front-Channel Logout 1.0 §3, used by
+     * Back-Channel Logout 1.0 §2.4): any other JSON type is refused rather than turned into text.
+     */
+    private static String asStringSid(Object sid) {
+        if (sid instanceof String text && !text.isEmpty()) {
+            return text;
+        }
+        throw new IllegalArgumentException("'sid' claim in logout token must be a non-empty string");
     }
 
     private static String addPadding(String base64url) {
