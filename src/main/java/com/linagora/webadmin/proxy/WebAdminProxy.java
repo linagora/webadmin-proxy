@@ -14,6 +14,7 @@
 package com.linagora.webadmin.proxy;
 
 import java.io.ByteArrayOutputStream;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
