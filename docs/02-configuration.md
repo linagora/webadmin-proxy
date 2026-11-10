@@ -227,7 +227,7 @@ Operators:
 | Operator | Description |
 |----------|-------------|
 | `EQUALS` | The claim value must exactly equal the URL variable value |
-| `HAS_DOMAIN` | The claim value is parsed as an email address; its domain part must equal the URL variable value. Useful with the `email` claim |
+| `HAS_DOMAIN` | The claim value is parsed as an email address; its domain part must equal the URL variable value. A claim that is not `local@domain` with a single `@` and both parts non-blank (`admin@`, `a@b@example.com`) is refused with 403. Useful with the `email` claim |
 
 A restriction is checked only when the rule that matched actually captured that variable. A rule that
 does not name it — `/*`, `/users`, `/mailingLists/*` — passes the restriction unexamined, so

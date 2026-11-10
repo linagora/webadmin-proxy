@@ -18,7 +18,8 @@ import java.util.Optional;
 /**
  * Extracts the domain part of an email address.
  *
- * <p>Only values holding exactly one '@', followed by a non-blank domain part, are email addresses.
+ * <p>Only "local@domain", with exactly one '@' and both parts non-blank, is an email address: the text
+ * after the first '@' of "admin@mine.example@" or "admin@" is not a domain.
  * Shared by {@link UrlPatternRestriction.Operator#HAS_DOMAIN} and the {@code /.proxy/myDomain} endpoint,
  * so that the domain reported to the caller is the one its restrictions grant.</p>
  */
@@ -33,6 +34,7 @@ public final class EmailDomain {
         int atIndex = emailAddress.indexOf(AT);
         return Optional.of(atIndex)
             .filter(index -> index >= 0 && index == emailAddress.lastIndexOf(AT))
+            .filter(index -> !emailAddress.substring(0, index).isBlank())
             .map(index -> emailAddress.substring(index + 1))
             .filter(domain -> !domain.isBlank());
     }
