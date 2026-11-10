@@ -2325,13 +2325,89 @@ class WebAdminProxyIntegrationTest {
                     .withBody("{\"email\":\"" + USER_EMAIL + "\",\"sid\":\"other-sid\"}"));
         }
 
+        private void stubValidTokenWithNumericIntrospectionSid() {
+            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\",\"sid\":1.00000000000000001}"));
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\"}"));
+        }
+
         /** Builds a minimal unsigned JWT: header.payload. */
         static String buildLogoutToken(String sid) {
+            return buildLogoutTokenWithRawSid("\"" + sid + "\"");
+        }
+
+        /** Builds a minimal unsigned JWT whose sid claim is the given raw JSON value. */
+        static String buildLogoutTokenWithRawSid(String rawSidJson) {
             String header = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString("{\"alg\":\"none\"}".getBytes(StandardCharsets.UTF_8));
             String payload = Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(("{\"sid\":\"" + sid + "\"}").getBytes(StandardCharsets.UTF_8));
+                .encodeToString(("{\"sid\":" + rawSidJson + "}").getBytes(StandardCharsets.UTF_8));
             return header + "." + payload + ".";
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"1", "1.0", "true", "null", "{}", "[]", "[\"a\"]", "\"\""})
+        void shouldReturn400WhenLogoutTokenSidIsNotANonEmptyString(String rawSid) {
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutTokenWithRawSid(rawSid))
+            .when().post("/backchannel-logout")
+            .then().statusCode(400);
+        }
+
+        @Test
+        void nonStringLogoutSidShouldNotEvictSessionWithSameTextualSid() {
+            stubValidTokenWithSidInUserinfoOnly();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutTokenWithRawSid("[\"" + SESSION_ID + "\"]"))
+            .when().post("/backchannel-logout")
+            .then().statusCode(400);
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
+        }
+
+        @Test
+        void nonStringIntrospectionSidShouldNotBeRegistered() {
+            stubValidTokenWithNumericIntrospectionSid();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            given().port(proxyServer.getAdminPort())
+                .contentType("application/x-www-form-urlencoded")
+                .body("logout_token=" + buildLogoutToken("1.0"))
+            .when().post("/backchannel-logout")
+            .then().statusCode(200);
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains")
+                .then().statusCode(200);
+
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
         }
 
         @Test
