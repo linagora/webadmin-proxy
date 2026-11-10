@@ -28,6 +28,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class WebAdminProxyConfigurationTest {
 
@@ -766,6 +767,20 @@ class WebAdminProxyConfigurationTest {
             var urls = config.clientsForId("my-client").get(0).allowedUrls();
             assertThat(urls).hasSize(2);
             assertThat(urls.get(1).endpointPattern()).isEqualTo("/tasks/*");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"[]", "", "[{\"include\": \"file://%s\"}]"})
+        void shouldRejectAnIncludeHoldingNoRule(String content) throws Exception {
+            Path empty = tempDir.resolve("empty-urls.json");
+            Files.writeString(empty, "[]");
+            Path includeFile = tempDir.resolve("no-rule.json");
+            Files.writeString(includeFile, content.formatted(empty.toAbsolutePath()));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(
+                    writeConfigWithInclude("file://" + includeFile.toAbsolutePath())))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("holds no rule");
         }
 
         @Test

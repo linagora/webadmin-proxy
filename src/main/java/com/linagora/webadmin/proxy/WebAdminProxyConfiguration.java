@@ -316,12 +316,22 @@ public record WebAdminProxyConfiguration(int port,
         }
     }
 
+    /**
+     * An include that brings no rule is refused: alone in a client, it would leave an empty
+     * {@code allowed.urls}, which allows every call, when the file was most likely meant to grant nothing.
+     */
     private static List<AllowedUrl> loadIncludedAllowedUrls(String includeUri) {
         try (InputStream stream = openInclude(includeUri)) {
             JsonNode array = MAPPER.readTree(stream);
             List<AllowedUrl> result = new ArrayList<>();
-            for (JsonNode urlNode : array) {
-                resolveUrlNode(urlNode, result);
+            if (array != null) {
+                for (JsonNode urlNode : array) {
+                    resolveUrlNode(urlNode, result);
+                }
+            }
+            if (result.isEmpty()) {
+                throw new IllegalArgumentException("Included allowed.urls " + includeUri + " holds no rule. An empty"
+                    + " allowed.urls allows every call: to deny every call, write {\"denied\": true, \"endpoint\": \"/*\"}.");
             }
             return result;
         } catch (IOException e) {
