@@ -92,9 +92,9 @@ public class OidcTokenResolver {
                 "No applicable configuration for user '" + user + "' with client '" + clientId + "'"));
 
         // The sid is a case-sensitive string (OpenID Connect Front-Channel Logout 1.0 §3): a non-string
-        // value is ignored, like a missing one, rather than turned into text.
+        // introspection value is ignored, like a missing one, rather than turned into text.
         Optional<String> sessionId = textual(introspect.json(), SID_CLAIM)
-            .or(() -> userInfo.textualClaim(SID_CLAIM));
+            .or(() -> userInfo.claimByPropertyName(SID_CLAIM));
         return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo, sessionId));
     }
 
