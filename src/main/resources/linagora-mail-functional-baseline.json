@@ -3,7 +3,7 @@
     "verb": [
       "POST"
     ],
-    "endpoint": "/users/%@{domain}/rename/{newUsername}?action=rename"
+    "endpoint": "/users/%@{domain}/rename/%@{domain}?action=rename"
   },
   {
     "verb": [
