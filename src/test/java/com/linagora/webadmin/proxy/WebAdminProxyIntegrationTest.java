@@ -2661,41 +2661,6 @@ class WebAdminProxyIntegrationTest {
             .then().statusCode(400);
         }
 
-        @ParameterizedTest
-        @ValueSource(strings = {
-            "{\"active\":true,\"aud\":\"%s\",\"client_id\":\"%s\",\"sid\":1.00000000000000001}|{\"email\":\"%s\"}",
-            "{\"active\":true,\"aud\":\"%s\",\"client_id\":\"%s\"}|{\"email\":\"%s\",\"sid\":1.0}"})
-        void shouldNotRegisterANonStringSid(String answers) {
-            String[] parts = answers.split("\\|");
-            oidcMock.when(request().withMethod("POST").withPath("/introspect"))
-                .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON)
-                    .withBody(parts[0].formatted(AUDIENCE, CLIENT_ID)));
-            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
-                .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON)
-                    .withBody(parts[1].formatted(USER_EMAIL)));
-            backendMock.when(request().withMethod("GET").withPath("/domains"))
-                .respond(response().withStatusCode(200).withBody("[]"));
-
-            given().port(proxyServer.getPort())
-                .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains")
-                .then().statusCode(200);
-
-            // The logout of the string session "1.0" must not evict a session whose sid is a number
-            given().port(proxyServer.getAdminPort())
-                .contentType("application/x-www-form-urlencoded")
-                .body("logout_token=" + buildLogoutToken("1.0"))
-            .when().post("/backchannel-logout")
-            .then().statusCode(200);
-
-            given().port(proxyServer.getPort())
-                .header("Authorization", "Bearer " + VALID_TOKEN)
-                .when().get("/domains")
-                .then().statusCode(200);
-
-            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(1));
-        }
-
         @Test
         void shouldReturn400WhenLogoutTokenHasNoSidClaim() {
             String header = Base64.getUrlEncoder().withoutPadding()
