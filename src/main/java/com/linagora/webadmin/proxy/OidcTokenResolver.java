@@ -67,6 +67,7 @@ public class OidcTokenResolver {
         }
 
         String user = userInfo.claimByPropertyName(oidcConfiguration.userClaim())
+            .filter(claim -> !claim.isBlank())
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing required claim '" + oidcConfiguration.userClaim() + "' in userinfo response"));
 
