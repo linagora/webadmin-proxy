@@ -162,6 +162,30 @@ class AllowedUrlTest {
     }
 
     @Test
+    void deniedGetRuleShouldAlsoMatchHead() {
+        AllowedUrl denied = new AllowedUrl(List.of("GET", "DELETE"), "/domains/{domain}/tasks/{id}", true);
+        assertThat(denied.matches("HEAD", "/domains/mine.example/tasks/abc")).isTrue();
+    }
+
+    @Test
+    void getRuleShouldMatchHeadCaseInsensitively() {
+        AllowedUrl rule = new AllowedUrl(List.of("get"), "/domains");
+        assertThat(rule.matches("head", "/domains")).isTrue();
+    }
+
+    @Test
+    void headRuleShouldNotMatchGet() {
+        AllowedUrl rule = new AllowedUrl(List.of("HEAD"), "/domains");
+        assertThat(rule.matches("GET", "/domains")).isFalse();
+    }
+
+    @Test
+    void ruleWithoutGetShouldNotMatchHead() {
+        AllowedUrl rule = new AllowedUrl(List.of("DELETE", "PUT"), "/domains");
+        assertThat(rule.matches("HEAD", "/domains")).isFalse();
+    }
+
+    @Test
     void shouldRejectVerbNotInList() {
         AllowedUrl rule = new AllowedUrl(List.of("GET", "PUT"), "/domains");
         assertThat(rule.matches("DELETE", "/domains")).isFalse();
