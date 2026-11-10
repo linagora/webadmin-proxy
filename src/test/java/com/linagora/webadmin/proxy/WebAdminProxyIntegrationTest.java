@@ -339,6 +339,22 @@ class WebAdminProxyIntegrationTest {
 
     @ParameterizedTest
     @ValueSource(strings = {
+        "/domains/example.com/x%2F..%2F..%2Fother.com",
+        "/domains/example.com/x%2f..%2f..%2fother.com",
+        "/quota/domains/example.com..%2F../x",
+        "/quota/domains/example.com/..%2F../x",
+        "/users/bob@example.com%2F..%2F..%2Fdomains%2Fother.com"})
+    void shouldReturn400WhenAnEncodedSlashCarriesADotSegment(String target) throws Exception {
+        stubValidToken();
+        stubBackendForAnyRequest();
+
+        assertThat(sendRawRequest("DELETE", target)).isEqualTo(400);
+
+        backendMock.verify(request(), VerificationTimes.exactly(0));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
         "/users/bob@example.com?x=%25",
         "/users/bob@example.com?x=a=b&&y",
         "/users/bob@example.com?"})
