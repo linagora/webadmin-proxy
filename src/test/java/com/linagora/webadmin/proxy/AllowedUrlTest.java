@@ -381,6 +381,35 @@ class AllowedUrlTest {
     }
 
     @Nested
+    class DuplicatedPatternParameters {
+
+        @Test
+        void aParameterListedTwiceShouldBeRejected() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/messages?user=%@{domain}&user={domain}"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'user'");
+        }
+
+        @Test
+        void aParameterListedTwiceWithDifferentLiteralsShouldBeRejected() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/users?action=a&action=b"))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void aFlagListedTwiceShouldBeRejected() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/quota/users?hasSpecificQuota&hasSpecificQuota=true"))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+
+        @Test
+        void aDeniedRuleListingAParameterTwiceShouldBeRejected() {
+            assertThatThrownBy(() -> new AllowedUrl(List.of(), "/messages?user=%@{domain}&user={domain}", true))
+                .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
     class RepeatedQueryParameters {
 
         @Test

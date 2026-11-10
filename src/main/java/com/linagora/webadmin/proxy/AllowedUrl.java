@@ -147,7 +147,7 @@ public class AllowedUrl {
             int eq = param.indexOf('=');
             if (eq < 0) {
                 // Valueless 'flag': the parameter must be present, with any value or none.
-                result.put(param, new CompiledQueryParam(Pattern.compile("^.*$"), List.of(), Map.of()));
+                putOnce(result, param, new CompiledQueryParam(Pattern.compile("^.*$"), List.of(), Map.of()), endpointPattern);
                 continue;
             }
             String paramName = param.substring(0, eq);
@@ -155,9 +155,21 @@ public class AllowedUrl {
             List<String> varNames = new ArrayList<>();
             Map<String, String> groupNames = new HashMap<>();
             Pattern compiled = compile(toPathRegex(valuePattern, varNames, groupNames), endpointPattern);
-            result.put(paramName, new CompiledQueryParam(compiled, varNames, groupNames));
+            putOnce(result, paramName, new CompiledQueryParam(compiled, varNames, groupNames), endpointPattern);
         }
         return Map.copyOf(result);
+    }
+
+    /**
+     * A parameter listed twice would otherwise keep only its last constraint, silently widening the rule:
+     * such a pattern is refused at startup.
+     */
+    private static void putOnce(Map<String, CompiledQueryParam> result, String paramName,
+                                CompiledQueryParam compiledParam, String endpointPattern) {
+        if (result.putIfAbsent(paramName, compiledParam) != null) {
+            throw new IllegalArgumentException("Invalid endpoint pattern '" + endpointPattern
+                + "': query parameter '" + paramName + "' is listed more than once");
+        }
     }
 
     private static boolean isOtherParamsPlaceholder(String param) {
