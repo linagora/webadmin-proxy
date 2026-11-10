@@ -80,7 +80,7 @@ class CaffeineOidcTokenCacheTest {
 
     private static class SidlessTokenResolver extends OidcTokenResolver {
         SidlessTokenResolver(OidcConfiguration oidcConfiguration) {
-            super(null, oidcConfiguration, WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).build());
+            super(null, null, oidcConfiguration, WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).build());
         }
 
         @Override

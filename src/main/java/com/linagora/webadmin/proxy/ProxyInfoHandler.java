@@ -67,7 +67,7 @@ public class ProxyInfoHandler {
     }
 
     private String resolveDomain(AuthenticatedRequest auth) {
-        return auth.userInfo().claimByPropertyName("domain")
+        return auth.userInfo().claim("domain")
             .or(() -> EmailDomain.of(auth.user()))
             .orElseThrow(() -> new AccessForbiddenException(
                 "Cannot determine domain: no 'domain' claim and user '" + auth.user() + "' is not an email address"));

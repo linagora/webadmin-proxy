@@ -312,7 +312,7 @@ public class WebAdminProxy implements Startable {
             if (urlVarValue == null) {
                 continue;
             }
-            Optional<String> claimOpt = auth.userInfo().claimByPropertyName(restriction.backingClaim());
+            Optional<String> claimOpt = auth.userInfo().claim(restriction.backingClaim());
             if (claimOpt.isEmpty()) {
                 return Mono.error(new AccessForbiddenException(
                     "Missing required claim '" + restriction.backingClaim() + "' for URL validation"));
