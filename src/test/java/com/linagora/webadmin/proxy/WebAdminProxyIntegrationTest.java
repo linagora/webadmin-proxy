@@ -878,6 +878,96 @@ class WebAdminProxyIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(401);
     }
 
+    // --- Non-string OIDC values ---
+
+    private void restartProxyWith(List<String> audiences, Map<String, ClientConfiguration> clients) throws Exception {
+        proxyServer.stop();
+        int oidcPort = oidcMockServer.getLocalPort();
+        URL userInfoUrl = new URL("http://localhost:" + oidcPort + "/userinfo");
+        URL introspectUrl = new URL("http://localhost:" + oidcPort + "/introspect");
+        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, Optional.empty());
+        OidcConfiguration oidcConfiguration = new OidcConfiguration(
+            userInfoUrl, introspectionEndpoint, audiences, "email", Duration.ofSeconds(60));
+        WebAdminProxyConfiguration config = WebAdminProxyConfiguration.builder()
+            .oidcConfiguration(oidcConfiguration)
+            .clients(clients)
+            .build();
+        proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(config));
+        proxyServer.start();
+    }
+
+    private ClientConfiguration backendClient(List<String> authorizedUsers) {
+        return ClientConfiguration.builder()
+            .webadminBackend("http://localhost:" + backendMockServer.getLocalPort())
+            .webadminToken(WEBADMIN_TOKEN)
+            .authorizedUsers(authorizedUsers)
+            .build();
+    }
+
+    private void stubOidc(String introspectBody, String userinfoBody) {
+        oidcMock.when(request().withMethod("POST").withPath("/introspect"))
+            .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON).withBody(introspectBody));
+        oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+            .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON).withBody(userinfoBody));
+        backendMock.when(request().withMethod("GET").withPath("/domains"))
+            .respond(response().withStatusCode(200).withBody("[]"));
+    }
+
+    private int getDomainsStatus() {
+        return given()
+            .port(proxyServer.getPort())
+            .header("Authorization", "Bearer " + VALID_TOKEN)
+        .when()
+            .get("/domains")
+            .statusCode();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"42", "[42]", "true", "[true]", "null", "[null]", "{\"aud\":\"webadmin\"}", "[[\"webadmin\"]]"})
+    void shouldReturn401WhenAudienceIsNotAJsonString(String rawAudience) throws Exception {
+        restartProxyWith(List.of("42", "true", "null", "", "[\"webadmin\"]"), Map.of(CLIENT_ID, backendClient(List.of())));
+        stubOidc("{\"active\":true,\"aud\":" + rawAudience + ",\"client_id\":\"" + CLIENT_ID + "\"}",
+            "{\"email\":\"" + USER_EMAIL + "\"}");
+
+        assertThat(getDomainsStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldAcceptStringAudienceAmongNonStringOnes() throws Exception {
+        stubOidc("{\"active\":true,\"aud\":[42,null,\"" + AUDIENCE + "\"],\"client_id\":\"" + CLIENT_ID + "\"}",
+            "{\"email\":\"" + USER_EMAIL + "\"}");
+
+        assertThat(getDomainsStatus()).isEqualTo(200);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"true", "42", "null"})
+    void shouldReturn401WhenClientIdIsNotAJsonString(String rawClientId) throws Exception {
+        restartProxyWith(List.of(AUDIENCE), Map.of(rawClientId, backendClient(List.of())));
+        stubOidc("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":" + rawClientId + "}",
+            "{\"email\":\"" + USER_EMAIL + "\"}");
+
+        assertThat(getDomainsStatus()).isEqualTo(401);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"42", "true", "null"})
+    void shouldReturn401WhenUserClaimIsNotAJsonString(String rawUser) throws Exception {
+        restartProxyWith(List.of(AUDIENCE), Map.of(CLIENT_ID, backendClient(List.of(rawUser))));
+        stubOidc("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}",
+            "{\"email\":" + rawUser + "}");
+
+        assertThat(getDomainsStatus()).isEqualTo(401);
+    }
+
+    @Test
+    void shouldReturn401WhenUserinfoIsNotAJsonObject() {
+        stubOidc("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}",
+            "[\"" + USER_EMAIL + "\"]");
+
+        assertThat(getDomainsStatus()).isEqualTo(401);
+    }
+
     @Test
     void shouldReturn401WhenIntrospectEndpointFails() {
         oidcMock.when(request().withMethod("POST").withPath("/introspect"))
@@ -1572,6 +1662,23 @@ class WebAdminProxyIntegrationTest {
                 .then().statusCode(403);
         }
 
+        @ParameterizedTest
+        @ValueSource(strings = {"null", "100", "100.0", "true"})
+        void shouldReturn403WhenBackingClaimIsNotAJsonString(String rawClaim) throws Exception {
+            startProxyWith(
+                Map.of("domain", new UrlPatternRestriction("domain", Operator.EQUALS)),
+                List.of(new AllowedUrl(List.of(), "/domains/{domain}/users")));
+            stubIntrospect();
+            stubUserinfo("{\"email\":\"" + USER_EMAIL + "\",\"domain\":" + rawClaim + "}");
+            backendMock.when(request().withMethod("GET"))
+                .respond(response().withStatusCode(200).withBody("[]"));
+
+            given().port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+                .when().get("/domains/" + rawClaim + "/users")
+                .then().statusCode(403);
+        }
+
         @Test
         void shouldReturn403WhenEmailIsNotValidForHasDomain() throws Exception {
             startProxyWith(
@@ -1932,6 +2039,24 @@ class WebAdminProxyIntegrationTest {
                 .get("/domains");
 
             assertThat(response.statusCode()).isEqualTo(401);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"1", "1.0", "true", "null", "[\"1\"]", "{\"value\":\"1\"}"})
+        void shouldReturn403WhenClaimIsNotAJsonString(String rawClaim) {
+            stubIntrospect();
+            oidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"" + USER_EMAIL + "\",\"admin\":" + rawClaim + "}"));
+
+            Response response = given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/domains");
+
+            assertThat(response.statusCode()).isEqualTo(403);
         }
     }
 
@@ -3327,6 +3452,22 @@ class WebAdminProxyIntegrationTest {
             .then()
                 .statusCode(200)
                 .body("domain", org.hamcrest.Matchers.equalTo("custom-domain.com"));
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"null", "42", "true", "[\"custom-domain.com\"]", "{\"d\":\"custom-domain.com\"}"})
+        void myDomainShouldIgnoreNonStringDomainClaim(String rawClaim) throws Exception {
+            MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
+            proxyServer = startProxyWithOidc(oidcMock, ",\"domain\":" + rawClaim);
+
+            given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get("/.proxy/myDomain")
+            .then()
+                .statusCode(200)
+                .body("domain", org.hamcrest.Matchers.equalTo("example.com"));
         }
 
         @Test

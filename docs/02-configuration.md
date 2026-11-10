@@ -51,8 +51,8 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | `oidc.userInfo.url` | yes | OIDC userinfo endpoint URL |
 | `oidc.introspect.url` | yes | OIDC token introspection endpoint URL |
 | `oidc.introspect.credentials` | no | Credentials sent with introspect requests (e.g. `Bearer <token>`) |
-| `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values. Tokens matching none of the configured audiences are rejected with 401 |
-| `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`) |
+| `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values as a JSON string. Tokens matching none of the configured audiences are rejected with 401 |
+| `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`). It must be a JSON string, otherwise the token is rejected with 401 |
 | `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
 | `request.body.max.size` | no | Largest request body accepted, held in memory once the caller is authorized; above it the proxy answers `413`. Format: `100M`, `1G`, etc. Default: `100M` |
 | `request.read.timeout` | no | Longest pause allowed between two reads of a request body. Default: `30s` |
@@ -70,7 +70,7 @@ Each element in the `clients` array is a single-key object. The key is the OIDC 
 |-------|----------|-------------|
 | `webadmin.backend` | yes | Base URL of the James WebAdmin backend to proxy to |
 | `webadmin.token` | yes | Bearer token used to authenticate requests to the backend |
-| `expected.claims` | no | Map of claim name → required value. All listed claims must be present in userinfo with exactly the specified value |
+| `expected.claims` | no | Map of claim name → required value. All listed claims must be present in userinfo as JSON strings with exactly the specified value. A `null`, number, boolean, array or object claim never matches |
 | `expected.scopes` | no | List of OAuth 2.0 scopes that must all be present in the token's `scope` field (from the introspection response, RFC 7662). If empty or absent, no scope restriction is applied. Extra scopes in the token are ignored |
 | `authorized.users` | no | Allowlist of user identities (as resolved by `oidc.claim.authenticated.user`). If non-empty, only listed users are admitted. Useful when OIDC claim configuration is impractical |
 | `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins |
@@ -219,7 +219,7 @@ Constraints on captured URL variables. Each entry is keyed by the variable name 
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `backing.claim` | yes | Name of the OIDC claim whose value is used for comparison. If the claim is absent from the token, the request is rejected with 403 |
+| `backing.claim` | yes | Name of the OIDC claim whose value is used for comparison. If the claim is absent from the token, or is not a JSON string (`null`, number, boolean, array, object), the request is rejected with 403 |
 | `operator` | yes | How to compare the claim value against the URL variable. See operators below |
 
 Operators:
@@ -504,4 +504,4 @@ Available on the main proxy port, authenticated via OIDC. All endpoints require 
 |----------|--------|-------------|
 | `/.proxy/allowed/urls` | `GET` | Returns the `allowed.urls` list for the caller's client as JSON. Returns 204 if not configured. Intended for frontends that adapt their UI based on permission level |
 | `/.proxy/whoami` | `GET` | Returns the authenticated user identity: `{"email":"user@example.com"}` |
-| `/.proxy/myDomain` | `GET` | Returns the caller's domain: `{"domain":"example.com"}`. Resolved from the `domain` claim in userinfo if present, otherwise extracted from the domain part of the email claim |
+| `/.proxy/myDomain` | `GET` | Returns the caller's domain: `{"domain":"example.com"}`. Resolved from the `domain` claim in userinfo if it is a JSON string, otherwise extracted from the domain part of the email claim |
