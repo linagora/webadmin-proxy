@@ -14,7 +14,6 @@
 package com.linagora.webadmin.proxy;
 
 import java.io.ByteArrayOutputStream;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -218,7 +217,7 @@ public class WebAdminProxy implements Startable {
     private static boolean hasNoDotSegment(String rawPath) {
         try {
             return Arrays.stream(rawPath.split("/"))
-                .map(segment -> URLDecoder.decode(segment, StandardCharsets.UTF_8))
+                .map(AllowedUrl::decodePath)
                 .noneMatch(segment -> segment.equals(".") || segment.equals(".."));
         } catch (IllegalArgumentException e) {
             return false;
