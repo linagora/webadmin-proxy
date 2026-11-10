@@ -68,15 +68,9 @@ public class ProxyInfoHandler {
 
     private String resolveDomain(AuthenticatedRequest auth) {
         return auth.userInfo().claimByPropertyName("domain")
-            .orElseGet(() -> {
-                String email = auth.user();
-                int atIndex = email.indexOf('@');
-                if (atIndex >= 0) {
-                    return email.substring(atIndex + 1);
-                }
-                throw new AccessForbiddenException(
-                    "Cannot determine domain: no 'domain' claim and user '" + email + "' is not an email address");
-            });
+            .or(() -> EmailDomain.of(auth.user()))
+            .orElseThrow(() -> new AccessForbiddenException(
+                "Cannot determine domain: no 'domain' claim and user '" + auth.user() + "' is not an email address"));
     }
 
     private interface NodePopulator {

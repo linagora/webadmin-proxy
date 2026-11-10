@@ -25,12 +25,9 @@ public record UrlPatternRestriction(String backingClaim, Operator operator) {
         HAS_DOMAIN {
             @Override
             public String extractExpectedValue(String claimValue) {
-                int atIndex = claimValue.indexOf('@');
-                if (atIndex < 0) {
-                    throw new AccessForbiddenException(
-                        "Claim value is not a valid email address for HAS_DOMAIN operator");
-                }
-                return claimValue.substring(atIndex + 1);
+                return EmailDomain.of(claimValue)
+                    .orElseThrow(() -> new AccessForbiddenException(
+                        "Claim value is not a valid email address for HAS_DOMAIN operator"));
             }
         };
 

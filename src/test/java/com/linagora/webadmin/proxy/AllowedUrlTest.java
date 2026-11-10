@@ -22,6 +22,8 @@ import java.util.Optional;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import com.linagora.webadmin.proxy.UrlPatternRestriction.Operator;
 
@@ -754,10 +756,11 @@ class AllowedUrlTest {
             assertThat(Operator.HAS_DOMAIN.extractExpectedValue("bob@example.com")).isEqualTo("example.com");
         }
 
-        @Test
-        void hasDomainShouldExtractDomainWhenMultipleAtSigns() {
-            // Only the first @ separates local-part from domain
-            assertThat(Operator.HAS_DOMAIN.extractExpectedValue("a@b@example.com")).isEqualTo("b@example.com");
+        @ParameterizedTest
+        @ValueSource(strings = {"a@b@example.com", "a@@example.com", "admin@", "admin@ ", "@"})
+        void hasDomainShouldThrowWhenEmailHasNoSingleDomainPart(String claimValue) {
+            assertThatThrownBy(() -> Operator.HAS_DOMAIN.extractExpectedValue(claimValue))
+                .isInstanceOf(AccessForbiddenException.class);
         }
 
         @Test
