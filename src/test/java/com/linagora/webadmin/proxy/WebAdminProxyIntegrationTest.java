@@ -3361,7 +3361,7 @@ class WebAdminProxyIntegrationTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"admin@", "a@@mine.example", "a@b@c.example", "admin@ "})
+        @ValueSource(strings = {"admin@", "a@@mine.example", "a@b@c.example", "admin@ ", "@mine.example"})
         void myDomainShouldReturn403WhenEmailHasNoSingleDomainPart(String email) throws Exception {
             MockServerClient oidcMock = new MockServerClient("localhost", oidcMockServer.getLocalPort());
             stubOidc(oidcMock, email, "");
