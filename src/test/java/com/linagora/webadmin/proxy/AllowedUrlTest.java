@@ -786,7 +786,7 @@ class AllowedUrlTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"a@b@example.com", "a@@example.com", "admin@", "admin@ ", "@"})
+        @ValueSource(strings = {"a@b@example.com", "a@@example.com", "admin@mine.example@", "admin@","admin@ ", "@"})
         void hasDomainShouldThrowWhenEmailHasNoSingleDomainPart(String claimValue) {
             assertThatThrownBy(() -> Operator.HAS_DOMAIN.extractExpectedValue(claimValue))
                 .isInstanceOf(AccessForbiddenException.class);
