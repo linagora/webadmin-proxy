@@ -46,6 +46,7 @@ public class WebAdminProxyModule extends AbstractModule {
         bind(WebAdminProxyConfiguration.class).toInstance(configuration);
         bind(OidcConfiguration.class).toInstance(configuration.oidcConfiguration());
         bind(DefaultCheckTokenClient.class).in(Scopes.SINGLETON);
+        bind(UserinfoClient.class).in(Scopes.SINGLETON);
         bind(OidcTokenResolver.class).in(Scopes.SINGLETON);
         bind(OidcTokenCache.class).to(CaffeineOidcTokenCache.class).in(Scopes.SINGLETON);
         bind(AllowedUrlsHandler.class).in(Scopes.SINGLETON);

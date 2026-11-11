@@ -16,12 +16,10 @@ package com.linagora.webadmin.proxy;
 import java.util.List;
 import java.util.Optional;
 
-import org.apache.james.jwt.userinfo.UserinfoResponse;
-
 import reactor.core.publisher.Mono;
 
 public record AuthenticatedRequest(String user, String clientId, ClientConfiguration clientConfiguration,
-                                    UserinfoResponse userInfo, Optional<String> sessionId) {
+                                    Userinfo userInfo, Optional<String> sessionId) {
 
     public Mono<Void> checkUserAuthorized() {
         List<String> authorizedUsers = clientConfiguration.authorizedUsers();

@@ -1,0 +1,32 @@
+/********************************************************************
+ *  Webadmin Proxy                                                   *
+ *                                                                   *
+ *  Copyright (C) 2025 Linagora                                      *
+ *                                                                   *
+ *  This program is free software: you can redistribute it and/or   *
+ *  modify it under the terms of the GNU Affero General Public       *
+ *  License as published by the Free Software Foundation, either     *
+ *  version 3 of the License, or (at your option) any later version. *
+ *                                                                   *
+ *  https://www.gnu.org/licenses/agpl-3.0.en.html                   *
+ ********************************************************************/
+
+package com.linagora.webadmin.proxy;
+
+import java.util.Optional;
+
+import com.fasterxml.jackson.databind.JsonNode;
+
+/**
+ * The claims of an OIDC userinfo answer.
+ */
+public record Userinfo(JsonNode json) {
+
+    /**
+     * @return the claim when it is a JSON string, empty when it is absent, {@code null}, a number, a boolean, an
+     *     array or an object
+     */
+    public Optional<String> claim(String name) {
+        return TextualJson.textualField(json, name);
+    }
+}

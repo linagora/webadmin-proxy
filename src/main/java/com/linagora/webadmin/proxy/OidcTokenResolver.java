@@ -16,12 +16,13 @@ package com.linagora.webadmin.proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import jakarta.inject.Inject;
 
 import org.apache.james.jwt.DefaultCheckTokenClient;
 import org.apache.james.jwt.introspection.TokenIntrospectionResponse;
-import org.apache.james.jwt.userinfo.UserinfoResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,28 +36,31 @@ public class OidcTokenResolver {
     private static final String SID_CLAIM = "sid";
 
     private final DefaultCheckTokenClient checkTokenClient;
+    private final UserinfoClient userinfoClient;
     private final OidcConfiguration oidcConfiguration;
     private final List<Map.Entry<String, ClientConfiguration>> clients;
 
     @Inject
     public OidcTokenResolver(DefaultCheckTokenClient checkTokenClient,
+                              UserinfoClient userinfoClient,
                               OidcConfiguration oidcConfiguration,
                               WebAdminProxyConfiguration configuration) {
         this.checkTokenClient = checkTokenClient;
+        this.userinfoClient = userinfoClient;
         this.oidcConfiguration = oidcConfiguration;
         this.clients = configuration.clients();
     }
 
     public Mono<AuthenticatedRequest> resolve(String token) {
         return Mono.zip(
-                Mono.from(checkTokenClient.userInfo(oidcConfiguration.userInfoUrl(), token)),
+                userinfoClient.userInfo(oidcConfiguration.userInfoUrl(), token),
                 Mono.from(checkTokenClient.introspect(oidcConfiguration.introspectionEndpoint(), token)))
             .flatMap(tuple -> buildAuthenticatedRequest(tuple.getT1(), tuple.getT2()))
             .onErrorMap(e -> !(e instanceof OidcAuthenticationException) && !(e instanceof AccessForbiddenException),
                 e -> new OidcAuthenticationException("OIDC endpoint error", e));
     }
 
-    private Mono<AuthenticatedRequest> buildAuthenticatedRequest(UserinfoResponse userInfo,
+    private Mono<AuthenticatedRequest> buildAuthenticatedRequest(Userinfo userInfo,
                                                                    TokenIntrospectionResponse introspect) {
         if (!introspect.active()) {
             return Mono.error(new OidcAuthenticationException("Token is not active"));
@@ -67,12 +71,12 @@ public class OidcTokenResolver {
                 "Invalid audience. Expected one of: " + oidcConfiguration.audiences()));
         }
 
-        String user = userInfo.claimByPropertyName(oidcConfiguration.userClaim())
+        String user = userInfo.claim(oidcConfiguration.userClaim())
             .filter(claim -> !claim.isBlank())
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing required claim '" + oidcConfiguration.userClaim() + "' in userinfo response"));
 
-        String clientId = textual(introspect.json(), "client_id")
+        String clientId = TextualJson.textualField(introspect.json(), "client_id")
             .orElseThrow(() -> new OidcAuthenticationException(
                 "Missing or non-string 'client_id' in introspect response (RFC 7662)"));
 
@@ -93,8 +97,8 @@ public class OidcTokenResolver {
 
         // The sid is a case-sensitive string (OpenID Connect Front-Channel Logout 1.0 §3): a non-string
         // introspection value is ignored, like a missing one, rather than turned into text.
-        Optional<String> sessionId = textual(introspect.json(), SID_CLAIM)
-            .or(() -> userInfo.claimByPropertyName(SID_CLAIM));
+        Optional<String> sessionId = TextualJson.textualField(introspect.json(), SID_CLAIM)
+            .or(() -> userInfo.claim(SID_CLAIM));
         return Mono.just(new AuthenticatedRequest(user, clientId, clientConfiguration, userInfo, sessionId));
     }
 
@@ -114,40 +118,26 @@ public class OidcTokenResolver {
         return tokenScopes.containsAll(requiredScopes);
     }
 
-    private boolean claimsMatch(ClientConfiguration config, UserinfoResponse userInfo) {
-        for (Map.Entry<String, String> claim : config.expectedClaims().entrySet()) {
-            Optional<String> actual = userInfo.claimByPropertyName(claim.getKey());
-            if (actual.isEmpty() || !claim.getValue().equals(actual.get())) {
-                return false;
-            }
-        }
-        return true;
+    private boolean claimsMatch(ClientConfiguration config, Userinfo userInfo) {
+        return config.expectedClaims().entrySet().stream()
+            .allMatch(expectedClaim -> userInfo.claim(expectedClaim.getKey())
+                .filter(expectedClaim.getValue()::equals)
+                .isPresent());
     }
 
     private boolean audienceMatches(TokenIntrospectionResponse introspect) {
         List<String> expected = oidcConfiguration.audiences();
-        JsonNode audNode = introspect.json().get("aud");
-        if (audNode == null) {
-            return false;
-        }
-        if (audNode.isArray()) {
-            for (JsonNode node : audNode) {
-                if (node.isTextual() && expected.contains(node.textValue())) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return audNode.isTextual() && expected.contains(audNode.textValue());
+        return Optional.ofNullable(introspect.json().get("aud"))
+            .stream()
+            .flatMap(OidcTokenResolver::audienceElements)
+            .flatMap(audience -> TextualJson.textual(audience).stream())
+            .anyMatch(expected::contains);
     }
 
-    /**
-     * The member only when it is a JSON string: values the configuration describes as strings must not be
-     * met by a number, a boolean or a null that prints as one ({@code "client_id": true} is no client "true").
-     */
-    static Optional<String> textual(JsonNode json, String name) {
-        return Optional.ofNullable(json.get(name))
-            .filter(JsonNode::isTextual)
-            .map(JsonNode::textValue);
+    private static Stream<JsonNode> audienceElements(JsonNode audNode) {
+        if (audNode.isArray()) {
+            return StreamSupport.stream(audNode.spliterator(), false);
+        }
+        return Stream.of(audNode);
     }
 }
