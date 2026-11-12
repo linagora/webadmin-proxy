@@ -145,25 +145,31 @@ public class WebAdminProxy implements Startable {
         }
         String token = authHeader.substring("Bearer ".length());
 
+        Optional<String> pathPrefix = configuration.pathPrefixOf(rawPath(request.uri()));
+        if (pathPrefix.isEmpty()) {
+            return response.status(404).send();
+        }
+        String target = stripPathPrefix(request.uri(), pathPrefix.get());
+
         if ("GET".equalsIgnoreCase(request.method().name())) {
-            String path = request.fullPath();
+            String path = AllowedUrl.decodePath(rawPath(target));
             if (ALLOWED_URLS_PATH.equals(path)) {
-                return allowedUrlsHandler.handle(response, token);
+                return allowedUrlsHandler.handle(response, pathPrefix.get(), token);
             }
             if (WHOAMI_PATH.equals(path)) {
-                return proxyInfoHandler.handleWhoami(response, token);
+                return proxyInfoHandler.handleWhoami(response, pathPrefix.get(), token);
             }
             if (MY_DOMAIN_PATH.equals(path)) {
-                return proxyInfoHandler.handleMyDomain(response, token);
+                return proxyInfoHandler.handleMyDomain(response, pathPrefix.get(), token);
             }
         }
 
-        return tokenCache.resolve(token)
+        return tokenCache.resolve(pathPrefix.get(), token)
             .flatMap(auth -> auth.checkUserAuthorized()
-                .then(checkUrlAccess(auth, request))
+                .then(checkUrlAccess(auth, request.method().name(), target))
                 .then(readBody(request))
                 .flatMap(payload -> checkNotAForm(request, payload)
-                    .then(dispatchToBackend(request, response, payload, auth)))
+                    .then(dispatchToBackend(request, response, target, payload, auth)))
                 .contextWrite(ReactorUtils.context("request",
                     MDCBuilder.create()
                         .addToContext(MDCBuilder.USER, auth.user())
@@ -180,6 +186,20 @@ public class WebAdminProxy implements Startable {
             .onErrorResume(OidcAuthenticationException.class, e ->
                 ReactorUtils.logAsMono(() -> LOGGER.info("Authentication rejected", e))
                     .then(response.status(401).send().then()));
+    }
+
+    private static String rawPath(String uri) {
+        int queryIdx = uri.indexOf('?');
+        return queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
+    }
+
+    /**
+     * Rules and the backend see the target without the prefix, so a profile reads the same whatever path it is
+     * served under.
+     */
+    private static String stripPathPrefix(String uri, String pathPrefix) {
+        String target = uri.substring(pathPrefix.length());
+        return target.startsWith("/") ? target : "/" + target;
     }
 
     private Mono<byte[]> readBody(HttpServerRequest request) {
@@ -208,7 +228,7 @@ public class WebAdminProxy implements Startable {
      */
     private static boolean isCanonicalTarget(String uri) {
         int queryIdx = uri.indexOf('?');
-        String rawPath = queryIdx >= 0 ? uri.substring(0, queryIdx) : uri;
+        String rawPath = rawPath(uri);
         String rawQuery = queryIdx >= 0 ? uri.substring(queryIdx + 1) : "";
         return uri.startsWith("/")
             && uri.indexOf('#') < 0
@@ -281,13 +301,11 @@ public class WebAdminProxy implements Startable {
         return isForm ? Mono.error(new FormBodyException()) : Mono.empty();
     }
 
-    private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, HttpServerRequest request) {
+    private Mono<Void> checkUrlAccess(AuthenticatedRequest auth, String method, String uri) {
         List<AllowedUrl> allowedUrls = auth.clientConfiguration().allowedUrls();
         if (allowedUrls.isEmpty()) {
             return Mono.empty();
         }
-        String uri = request.uri();
-        String method = request.method().name();
         Optional<AllowedUrl> firstMatch = allowedUrls.stream()
             .filter(rule -> rule.match(method, uri).isPresent())
             .findFirst();
@@ -330,13 +348,13 @@ public class WebAdminProxy implements Startable {
         return Mono.empty();
     }
 
-    private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response,
+    private Mono<Void> dispatchToBackend(HttpServerRequest request, HttpServerResponse response, String target,
                                           byte[] payload, AuthenticatedRequest auth) {
         requestsMetric.increment();
         HttpClient backendClient = backendClients.get(auth.clientConfiguration().webadminBackend());
         String webadminToken = auth.clientConfiguration().webadminToken();
-        return ReactorUtils.logAsMono(() -> LOGGER.info("Proxying request: method={}, endpoint={}",
-                request.method().name(), request.uri()))
+        return ReactorUtils.logAsMono(() -> LOGGER.info("Proxying request: method={}, endpoint={}, backend={}",
+                request.method().name(), target, auth.clientConfiguration().webadminBackend()))
             .then(Mono.from(backendClient
             .headers(outgoing -> {
                 request.requestHeaders().forEach(entry -> {
@@ -347,7 +365,7 @@ public class WebAdminProxy implements Startable {
                 outgoing.set(AUTHORIZATION_HEADER, "Bearer " + webadminToken);
             })
             .request(request.method())
-            .uri(request.uri())
+            .uri(target)
             .send((req, out) -> out.sendByteArray(Mono.just(payload)))
             .response((res, body) -> writeBackendResponse(response, res, body))))
         .then();

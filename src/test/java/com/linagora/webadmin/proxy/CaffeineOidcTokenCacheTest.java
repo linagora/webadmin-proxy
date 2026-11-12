@@ -47,8 +47,10 @@ class CaffeineOidcTokenCacheTest {
         appender.start();
         logger.addAppender(appender);
 
-        OidcConfiguration oidcConfiguration = new OidcConfiguration(null, null, List.of(), "email", Duration.ofMinutes(5));
-        testee = new CaffeineOidcTokenCache(new SidlessTokenResolver(oidcConfiguration), oidcConfiguration);
+        WebAdminProxyConfiguration configuration = WebAdminProxyConfiguration.builder()
+            .oidcConfiguration(new OidcConfiguration(null, null, List.of(), "email", Duration.ofMinutes(5)))
+            .build();
+        testee = new CaffeineOidcTokenCache(new SidlessTokenResolver(configuration), configuration);
     }
 
     @AfterEach
@@ -59,8 +61,8 @@ class CaffeineOidcTokenCacheTest {
 
     @Test
     void resolveShouldNeverLogTheToken() {
-        testee.resolve(TOKEN_1).block();
-        testee.resolve(TOKEN_2).block();
+        testee.resolve(ClientConfiguration.NO_PATH_PREFIX, TOKEN_1).block();
+        testee.resolve(ClientConfiguration.NO_PATH_PREFIX, TOKEN_2).block();
 
         assertThat(appender.list)
             .isNotEmpty()
@@ -70,8 +72,8 @@ class CaffeineOidcTokenCacheTest {
 
     @Test
     void missingSidShouldBeWarnedOnlyOnce() {
-        testee.resolve(TOKEN_1).block();
-        testee.resolve(TOKEN_2).block();
+        testee.resolve(ClientConfiguration.NO_PATH_PREFIX, TOKEN_1).block();
+        testee.resolve(ClientConfiguration.NO_PATH_PREFIX, TOKEN_2).block();
 
         assertThat(appender.list)
             .filteredOn(event -> event.getLevel() == Level.WARN)
@@ -79,12 +81,12 @@ class CaffeineOidcTokenCacheTest {
     }
 
     private static class SidlessTokenResolver extends OidcTokenResolver {
-        SidlessTokenResolver(OidcConfiguration oidcConfiguration) {
-            super(null, null, oidcConfiguration, WebAdminProxyConfiguration.builder().oidcConfiguration(oidcConfiguration).build());
+        SidlessTokenResolver(WebAdminProxyConfiguration configuration) {
+            super(null, null, configuration);
         }
 
         @Override
-        public Mono<AuthenticatedRequest> resolve(String token) {
+        public Mono<AuthenticatedRequest> resolve(String pathPrefix, String token) {
             return Mono.just(new AuthenticatedRequest("bob@domain.tld", "client", null, null, Optional.empty()));
         }
     }

@@ -41,8 +41,8 @@ public class AllowedUrlsHandler {
         this.tokenCache = tokenCache;
     }
 
-    public Mono<Void> handle(HttpServerResponse response, String token) {
-        return tokenCache.resolve(token)
+    public Mono<Void> handle(HttpServerResponse response, String pathPrefix, String token) {
+        return tokenCache.resolve(pathPrefix, token)
             .flatMap(auth -> auth.checkUserAuthorized()
                 .then(serveAllowedUrls(auth, response)))
             .onErrorResume(AccessForbiddenException.class, e -> {

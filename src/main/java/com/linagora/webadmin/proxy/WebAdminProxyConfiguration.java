@@ -23,7 +23,10 @@ import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.AbstractMap;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -40,7 +43,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 public record WebAdminProxyConfiguration(int port,
-                                          OidcConfiguration oidcConfiguration,
+                                          Map<String, OidcConfiguration> oidcProviders,
                                           List<Map.Entry<String, ClientConfiguration>> clients,
                                           Optional<Integer> selfAdminPort,
                                           boolean selfAdminEnabled,
@@ -53,11 +56,71 @@ public record WebAdminProxyConfiguration(int port,
     static final Duration DEFAULT_REQUEST_READ_TIMEOUT = Duration.ofSeconds(30);
     static final Duration DEFAULT_REQUEST_TIMEOUT = Duration.ofMinutes(5);
 
+    private static final List<String> OIDC_PROVIDER_KEYS = List.of("oidc.userInfo.url", "oidc.introspect.url",
+        "oidc.introspect.credentials", "oidc.audience", "oidc.claim.authenticated.user");
+    private static final Pattern PATH_PREFIX_PATTERN = Pattern.compile("(/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)+");
+
     public List<ClientConfiguration> clientsForId(String clientId) {
         return clients.stream()
             .filter(e -> e.getKey().equals(clientId))
             .map(Map.Entry::getValue)
             .toList();
+    }
+
+    public OidcConfiguration oidcConfiguration() {
+        return oidcProviders.get(ClientConfiguration.DEFAULT_OIDC_PROVIDER);
+    }
+
+    public Duration tokenCacheExpiration() {
+        return oidcProviders.values().iterator().next().tokenCacheExpiration();
+    }
+
+    /**
+     * The longest prefix wins, so that {@code /calendar/admin} entries are not served by {@code /calendar} ones.
+     */
+    public Optional<String> pathPrefixOf(String rawPath) {
+        return clients.stream()
+            .map(e -> e.getValue().pathPrefix())
+            .distinct()
+            .filter(prefix -> prefix.isEmpty() || rawPath.equals(prefix) || rawPath.startsWith(prefix + "/"))
+            .max(Comparator.comparingInt(String::length));
+    }
+
+    public OidcConfiguration oidcProviderFor(String pathPrefix) {
+        return clients.stream()
+            .map(Map.Entry::getValue)
+            .filter(client -> client.pathPrefix().equals(pathPrefix))
+            .map(client -> oidcProviders.get(client.oidcProvider()))
+            .findFirst()
+            .orElseThrow(() -> new IllegalArgumentException("No client is served under the path prefix '" + pathPrefix + "'"));
+    }
+
+    /**
+     * A token is only sent to the provider of the path it was presented on, so all the entries under one
+     * prefix must trust the same provider.
+     */
+    private void validate() {
+        if (oidcProviders.isEmpty()) {
+            throw new IllegalArgumentException("No OIDC provider is configured: set the oidc.* keys or oidc.providers");
+        }
+        Map<String, String> providerByPrefix = new HashMap<>();
+        for (Map.Entry<String, ClientConfiguration> entry : clients) {
+            ClientConfiguration client = entry.getValue();
+            if (!oidcProviders.containsKey(client.oidcProvider())) {
+                throw new IllegalArgumentException("Client '" + entry.getKey() + "' uses the unknown OIDC provider '"
+                    + client.oidcProvider() + "'. Known providers are " + oidcProviders.keySet() + ".");
+            }
+            if (!client.pathPrefix().isEmpty() && !PATH_PREFIX_PATTERN.matcher(client.pathPrefix()).matches()) {
+                throw new IllegalArgumentException("Client '" + entry.getKey() + "' has the invalid path.prefix '"
+                    + client.pathPrefix() + "': it starts with '/', does not end with '/' and holds only letters, digits, '-', '_', '.' and '~'.");
+            }
+            String previous = providerByPrefix.putIfAbsent(client.pathPrefix(), client.oidcProvider());
+            if (previous != null && !previous.equals(client.oidcProvider())) {
+                throw new IllegalArgumentException("The clients under the path prefix '" + client.pathPrefix()
+                    + "' use different OIDC providers (" + previous + ", " + client.oidcProvider()
+                    + "). Give each provider its own path.prefix.");
+            }
+        }
     }
 
     public static Builder builder() {
@@ -66,7 +129,7 @@ public record WebAdminProxyConfiguration(int port,
 
     public static class Builder {
         private int port = 0;
-        private OidcConfiguration oidcConfiguration;
+        private final Map<String, OidcConfiguration> oidcProviders = new LinkedHashMap<>();
         private List<Map.Entry<String, ClientConfiguration>> clients = new ArrayList<>();
         private Optional<Integer> selfAdminPort = Optional.empty();
         private boolean selfAdminEnabled = false;
@@ -81,7 +144,11 @@ public record WebAdminProxyConfiguration(int port,
         }
 
         public Builder oidcConfiguration(OidcConfiguration oidcConfiguration) {
-            this.oidcConfiguration = oidcConfiguration;
+            return oidcProvider(ClientConfiguration.DEFAULT_OIDC_PROVIDER, oidcConfiguration);
+        }
+
+        public Builder oidcProvider(String name, OidcConfiguration oidcConfiguration) {
+            this.oidcProviders.put(name, oidcConfiguration);
             return this;
         }
 
@@ -132,8 +199,11 @@ public record WebAdminProxyConfiguration(int port,
         }
 
         public WebAdminProxyConfiguration build() {
-            return new WebAdminProxyConfiguration(port, oidcConfiguration, List.copyOf(clients), selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins),
+            WebAdminProxyConfiguration configuration = new WebAdminProxyConfiguration(port, Collections.unmodifiableMap(new LinkedHashMap<>(oidcProviders)),
+                List.copyOf(clients), selfAdminPort, selfAdminEnabled, List.copyOf(corsAllowOrigins),
                 maxRequestBodySize, requestReadTimeout, requestTimeout);
+            configuration.validate();
+            return configuration;
         }
     }
 
@@ -146,7 +216,7 @@ public record WebAdminProxyConfiguration(int port,
         JsonNode root = MAPPER.readTree(configFile);
 
         int port = Integer.parseInt(resolve(root.get("port").asText()));
-        OidcConfiguration oidcConfiguration = parseOidcConfiguration(root);
+        Map<String, OidcConfiguration> oidcProviders = parseOidcProviders(root);
         List<Map.Entry<String, ClientConfiguration>> clients = parseClients(root);
 
         boolean selfAdminEnabled = Optional.ofNullable(root.get("self.webadmin.enabled"))
@@ -155,8 +225,8 @@ public record WebAdminProxyConfiguration(int port,
 
         Builder builder = builder()
             .port(port)
-            .oidcConfiguration(oidcConfiguration)
             .clients(clients);
+        oidcProviders.forEach(builder::oidcProvider);
         Optional.ofNullable(root.get("self.webadmin.port"))
             .map(node -> Integer.parseInt(resolve(node.asText())))
             .ifPresent(builder::selfAdminPort);
@@ -175,23 +245,67 @@ public record WebAdminProxyConfiguration(int port,
             .ifPresent(builder::requestTimeout);
 
         WebAdminProxyConfiguration config = builder.build();
-        LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, audiences={}, userClaim={}, clients={}",
+        LOGGER.info("Configuration loaded: port={}, selfAdminEnabled={}, selfAdminPort={}, oidcProviders={}, clients={}",
             port, selfAdminEnabled, config.selfAdminPort().map(String::valueOf).orElse("none"),
-            oidcConfiguration.audiences(), oidcConfiguration.userClaim(),
-            config.clients().stream().map(Map.Entry::getKey).toList());
+            oidcProviders.entrySet().stream()
+                .map(e -> e.getKey() + " (audiences=" + e.getValue().audiences() + ", userClaim=" + e.getValue().userClaim() + ")")
+                .toList(),
+            config.clients().stream()
+                .map(e -> e.getKey() + (e.getValue().pathPrefix().isEmpty() ? "" : " on " + e.getValue().pathPrefix()))
+                .toList());
         return config;
     }
 
-    private static OidcConfiguration parseOidcConfiguration(JsonNode root) throws IOException {
-        URL userInfoUrl = URI.create(resolve(root.get("oidc.userInfo.url").asText())).toURL();
-        URL introspectUrl = URI.create(resolve(root.get("oidc.introspect.url").asText())).toURL();
-        Optional<String> introspectCredentials = Optional.ofNullable(root.get("oidc.introspect.credentials"))
-            .map(node -> resolve(node.asText()));
-        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);
-        List<String> audiences = parseStringList(root.get("oidc.audience"));
-        String userClaim = resolve(root.get("oidc.claim.authenticated.user").asText());
+    /**
+     * The top-level {@code oidc.*} keys define the provider named {@code default}, so that existing configurations
+     * keep working. {@code oidc.providers} adds named ones, each taking the same keys but the cache expiration,
+     * which stays global.
+     */
+    private static Map<String, OidcConfiguration> parseOidcProviders(JsonNode root) throws IOException {
         Duration cacheExpiration = DurationParser.parse(resolve(root.get("oidc.token.cache.expiration").asText()), ChronoUnit.SECONDS);
+        Map<String, OidcConfiguration> providers = new LinkedHashMap<>();
+        if (OIDC_PROVIDER_KEYS.stream().anyMatch(root::has)) {
+            providers.put(ClientConfiguration.DEFAULT_OIDC_PROVIDER,
+                parseOidcConfiguration(ClientConfiguration.DEFAULT_OIDC_PROVIDER, root, cacheExpiration));
+        }
+        JsonNode providersNode = root.get("oidc.providers");
+        if (providersNode != null) {
+            parseNamedOidcProviders(providersNode, cacheExpiration, providers);
+        }
+        return providers;
+    }
+
+    private static void parseNamedOidcProviders(JsonNode providersNode, Duration cacheExpiration,
+                                                Map<String, OidcConfiguration> providers) throws IOException {
+        if (!providersNode.isObject()) {
+            throw new IllegalArgumentException("oidc.providers must be an object mapping provider names to their oidc.* keys");
+        }
+        for (Map.Entry<String, JsonNode> provider : (Iterable<Map.Entry<String, JsonNode>>) providersNode::fields) {
+            if (providers.containsKey(provider.getKey())) {
+                throw new IllegalArgumentException("OIDC provider '" + provider.getKey()
+                    + "' is defined twice: the top-level oidc.* keys already define '" + ClientConfiguration.DEFAULT_OIDC_PROVIDER + "'");
+            }
+            providers.put(provider.getKey(), parseOidcConfiguration(provider.getKey(), provider.getValue(), cacheExpiration));
+        }
+    }
+
+    private static OidcConfiguration parseOidcConfiguration(String name, JsonNode node, Duration cacheExpiration) throws IOException {
+        URL userInfoUrl = URI.create(resolve(requiredField(name, node, "oidc.userInfo.url").asText())).toURL();
+        URL introspectUrl = URI.create(resolve(requiredField(name, node, "oidc.introspect.url").asText())).toURL();
+        Optional<String> introspectCredentials = Optional.ofNullable(node.get("oidc.introspect.credentials"))
+            .map(credentials -> resolve(credentials.asText()));
+        IntrospectionEndpoint introspectionEndpoint = new IntrospectionEndpoint(introspectUrl, introspectCredentials);
+        List<String> audiences = parseStringList(requiredField(name, node, "oidc.audience"));
+        String userClaim = resolve(requiredField(name, node, "oidc.claim.authenticated.user").asText());
         return new OidcConfiguration(userInfoUrl, introspectionEndpoint, audiences, userClaim, cacheExpiration);
+    }
+
+    private static JsonNode requiredField(String provider, JsonNode node, String key) {
+        JsonNode value = node.get(key);
+        if (value == null) {
+            throw new IllegalArgumentException("OIDC provider '" + provider + "' is missing " + key);
+        }
+        return value;
     }
 
     private static List<Map.Entry<String, ClientConfiguration>> parseClients(JsonNode root) {
@@ -212,6 +326,12 @@ public record WebAdminProxyConfiguration(int port,
             .urlPatternRestrictions(parseUrlPatternRestrictions(clientNode))
             .authorizedUsers(parseAuthorizedUsers(clientNode))
             .expectedScopes(parseExpectedScopes(clientNode))
+            .pathPrefix(Optional.ofNullable(clientNode.get("path.prefix"))
+                .map(node -> resolve(node.asText()))
+                .orElse(ClientConfiguration.NO_PATH_PREFIX))
+            .oidcProvider(Optional.ofNullable(clientNode.get("oidc.provider"))
+                .map(node -> resolve(node.asText()))
+                .orElse(ClientConfiguration.DEFAULT_OIDC_PROVIDER))
             .build());
     }
 

@@ -38,8 +38,8 @@ public class ProxyInfoHandler {
         this.tokenCache = tokenCache;
     }
 
-    public Mono<Void> handleWhoami(HttpServerResponse response, String token) {
-        return tokenCache.resolve(token)
+    public Mono<Void> handleWhoami(HttpServerResponse response, String pathPrefix, String token) {
+        return tokenCache.resolve(pathPrefix, token)
             .flatMap(auth -> auth.checkUserAuthorized()
                 .then(serveJson(response, node -> node.put("email", auth.user()))))
             .onErrorResume(AccessForbiddenException.class, e -> {
@@ -52,8 +52,8 @@ public class ProxyInfoHandler {
             });
     }
 
-    public Mono<Void> handleMyDomain(HttpServerResponse response, String token) {
-        return tokenCache.resolve(token)
+    public Mono<Void> handleMyDomain(HttpServerResponse response, String pathPrefix, String token) {
+        return tokenCache.resolve(pathPrefix, token)
             .flatMap(auth -> auth.checkUserAuthorized()
                 .then(serveJson(response, node -> node.put("domain", resolveDomain(auth)))))
             .onErrorResume(AccessForbiddenException.class, e -> {

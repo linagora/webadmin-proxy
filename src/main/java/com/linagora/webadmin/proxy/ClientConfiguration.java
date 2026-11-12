@@ -22,7 +22,11 @@ import java.util.Objects;
 public record ClientConfiguration(String webadminBackend, String webadminToken,
                                    Map<String, String> expectedClaims, List<AllowedUrl> allowedUrls,
                                    Map<String, UrlPatternRestriction> urlPatternRestrictions,
-                                   List<String> authorizedUsers, List<String> expectedScopes) {
+                                   List<String> authorizedUsers, List<String> expectedScopes,
+                                   String pathPrefix, String oidcProvider) {
+
+    public static final String NO_PATH_PREFIX = "";
+    public static final String DEFAULT_OIDC_PROVIDER = "default";
 
     public static Builder builder() {
         return new Builder();
@@ -36,6 +40,18 @@ public record ClientConfiguration(String webadminBackend, String webadminToken,
         private Map<String, UrlPatternRestriction> urlPatternRestrictions = new HashMap<>();
         private List<String> authorizedUsers = new ArrayList<>();
         private List<String> expectedScopes = new ArrayList<>();
+        private String pathPrefix = NO_PATH_PREFIX;
+        private String oidcProvider = DEFAULT_OIDC_PROVIDER;
+
+        public Builder pathPrefix(String pathPrefix) {
+            this.pathPrefix = pathPrefix;
+            return this;
+        }
+
+        public Builder oidcProvider(String oidcProvider) {
+            this.oidcProvider = oidcProvider;
+            return this;
+        }
 
         public Builder webadminBackend(String webadminBackend) {
             this.webadminBackend = webadminBackend;
@@ -79,7 +95,7 @@ public record ClientConfiguration(String webadminBackend, String webadminToken,
                 webadminBackend, webadminToken,
                 Map.copyOf(expectedClaims), List.copyOf(allowedUrls),
                 Map.copyOf(urlPatternRestrictions), List.copyOf(authorizedUsers),
-                List.copyOf(expectedScopes));
+                List.copyOf(expectedScopes), pathPrefix, oidcProvider);
         }
     }
 }
