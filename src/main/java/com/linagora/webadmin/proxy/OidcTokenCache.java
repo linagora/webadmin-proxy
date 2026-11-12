@@ -16,7 +16,7 @@ package com.linagora.webadmin.proxy;
 import reactor.core.publisher.Mono;
 
 public interface OidcTokenCache {
-    Mono<AuthenticatedRequest> resolve(String bearerToken);
+    Mono<AuthenticatedRequest> resolve(String pathPrefix, String bearerToken);
 
     Mono<Void> invalidateBySid(String sid);
 }

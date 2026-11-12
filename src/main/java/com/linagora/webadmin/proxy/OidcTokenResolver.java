@@ -37,36 +37,41 @@ public class OidcTokenResolver {
 
     private final DefaultCheckTokenClient checkTokenClient;
     private final UserinfoClient userinfoClient;
-    private final OidcConfiguration oidcConfiguration;
-    private final List<Map.Entry<String, ClientConfiguration>> clients;
+    private final WebAdminProxyConfiguration configuration;
 
     @Inject
     public OidcTokenResolver(DefaultCheckTokenClient checkTokenClient,
                               UserinfoClient userinfoClient,
-                              OidcConfiguration oidcConfiguration,
                               WebAdminProxyConfiguration configuration) {
         this.checkTokenClient = checkTokenClient;
         this.userinfoClient = userinfoClient;
-        this.oidcConfiguration = oidcConfiguration;
-        this.clients = configuration.clients();
+        this.configuration = configuration;
     }
 
-    public Mono<AuthenticatedRequest> resolve(String token) {
-        return Mono.zip(
-                userinfoClient.userInfo(oidcConfiguration.userInfoUrl(), token),
-                Mono.from(checkTokenClient.introspect(oidcConfiguration.introspectionEndpoint(), token)))
-            .flatMap(tuple -> buildAuthenticatedRequest(tuple.getT1(), tuple.getT2()))
+    public Mono<AuthenticatedRequest> resolve(String pathPrefix, String token) {
+        return Mono.defer(() -> {
+                OidcConfiguration oidcConfiguration = configuration.oidcProviderFor(pathPrefix);
+                List<Map.Entry<String, ClientConfiguration>> clients = configuration.clients().stream()
+                    .filter(e -> e.getValue().pathPrefix().equals(pathPrefix))
+                    .toList();
+                return Mono.zip(
+                        userinfoClient.userInfo(oidcConfiguration.userInfoUrl(), token),
+                        Mono.from(checkTokenClient.introspect(oidcConfiguration.introspectionEndpoint(), token)))
+                    .flatMap(tuple -> buildAuthenticatedRequest(oidcConfiguration, clients, tuple.getT1(), tuple.getT2()));
+            })
             .onErrorMap(e -> !(e instanceof OidcAuthenticationException) && !(e instanceof AccessForbiddenException),
                 e -> new OidcAuthenticationException("OIDC endpoint error", e));
     }
 
-    private Mono<AuthenticatedRequest> buildAuthenticatedRequest(Userinfo userInfo,
+    private Mono<AuthenticatedRequest> buildAuthenticatedRequest(OidcConfiguration oidcConfiguration,
+                                                                   List<Map.Entry<String, ClientConfiguration>> clients,
+                                                                   Userinfo userInfo,
                                                                    TokenIntrospectionResponse introspect) {
         if (!introspect.active()) {
             return Mono.error(new OidcAuthenticationException("Token is not active"));
         }
 
-        if (!audienceMatches(introspect)) {
+        if (!audienceMatches(oidcConfiguration, introspect)) {
             return Mono.error(new OidcAuthenticationException(
                 "Invalid audience. Expected one of: " + oidcConfiguration.audiences()));
         }
@@ -125,7 +130,7 @@ public class OidcTokenResolver {
                 .isPresent());
     }
 
-    private boolean audienceMatches(TokenIntrospectionResponse introspect) {
+    private static boolean audienceMatches(OidcConfiguration oidcConfiguration, TokenIntrospectionResponse introspect) {
         List<String> expected = oidcConfiguration.audiences();
         return Optional.ofNullable(introspect.json().get("aud"))
             .stream()

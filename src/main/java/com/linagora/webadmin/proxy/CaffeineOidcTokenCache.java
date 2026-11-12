@@ -36,17 +36,27 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(CaffeineOidcTokenCache.class);
 
-    private final AsyncLoadingCache<String, AuthenticatedRequest> cache;
-    private final SetMultimap<String, String> sidToTokens = Multimaps.synchronizedSetMultimap(HashMultimap.create());
+    /**
+     * The same token presented under two path prefixes is resolved against each prefix's provider and entries.
+     */
+    private record Key(String pathPrefix, String token) {
+        @Override
+        public String toString() {
+            return "Key[pathPrefix=" + pathPrefix + "]";
+        }
+    }
+
+    private final AsyncLoadingCache<Key, AuthenticatedRequest> cache;
+    private final SetMultimap<String, Key> sidToTokens = Multimaps.synchronizedSetMultimap(HashMultimap.create());
     private final AtomicBoolean missingSidReported = new AtomicBoolean(false);
 
     @Inject
-    public CaffeineOidcTokenCache(OidcTokenResolver resolver, OidcConfiguration configuration) {
-        AsyncCacheLoader<String, AuthenticatedRequest> loader = (token, executor) ->
-            resolver.resolve(token)
+    public CaffeineOidcTokenCache(OidcTokenResolver resolver, WebAdminProxyConfiguration configuration) {
+        AsyncCacheLoader<Key, AuthenticatedRequest> loader = (key, executor) ->
+            resolver.resolve(key.pathPrefix(), key.token())
                 .doOnNext(auth -> {
                     auth.sessionId().ifPresentOrElse(
-                        sid -> sidToTokens.put(sid, token),
+                        sid -> sidToTokens.put(sid, key),
                         () -> reportMissingSid(auth));
                     LOGGER.debug("Caching token info: user={}, clientId={}", auth.user(), auth.clientId());
                 })
@@ -55,9 +65,9 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
 
         cache = Caffeine.newBuilder()
             .expireAfterWrite(configuration.tokenCacheExpiration())
-            .removalListener((String token, AuthenticatedRequest auth, RemovalCause cause) -> {
+            .removalListener((Key key, AuthenticatedRequest auth, RemovalCause cause) -> {
                 if (cause.wasEvicted() && auth != null) {
-                    auth.sessionId().ifPresent(sid -> sidToTokens.remove(sid, token));
+                    auth.sessionId().ifPresent(sid -> sidToTokens.remove(sid, key));
                 }
             })
             .buildAsync(loader);
@@ -72,13 +82,13 @@ public class CaffeineOidcTokenCache implements OidcTokenCache {
     }
 
     @Override
-    public Mono<AuthenticatedRequest> resolve(String bearerToken) {
-        return Mono.fromFuture(cache.get(bearerToken));
+    public Mono<AuthenticatedRequest> resolve(String pathPrefix, String bearerToken) {
+        return Mono.fromFuture(cache.get(new Key(pathPrefix, bearerToken)));
     }
 
     @Override
     public Mono<Void> invalidateBySid(String sid) {
-        List<String> snapshot;
+        List<Key> snapshot;
         synchronized (sidToTokens) {
             snapshot = List.copyOf(sidToTokens.get(sid));
         }
