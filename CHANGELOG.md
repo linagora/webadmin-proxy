@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-12
+
 ### Upgrade instructions
 
 - Request bodies are now read after authorization and are limited: `request.body.max.size` (100M by default; larger bodies get a 413), plus the new `request.read.timeout` and `request.timeout` settings (408 when a body does not arrive in time). Adjust them if your clients send large bodies or are slow.
@@ -13,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Alias writes in the mail baseline are stricter: writing a domain alias now belongs to platform operators, and a user alias needs its target and source in the same domain.
 - In the mail baseline, a domain administrator may only rename a user into their own domain. Any other rename is denied.
 - In the calendar baseline, the address book copy rule now denies the presence of `sourceDomain` whatever the spelling of the action.
+
+### Added
+
+- One instance can now serve several backends and OIDC providers: a client entry may set `path.prefix` and `oidc.provider`, and `oidc.providers` holds named providers. The top-level `oidc.*` keys define the provider named `default`, so existing configurations keep working unchanged.
 
 ### Changed
 
