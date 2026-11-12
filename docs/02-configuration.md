@@ -48,12 +48,13 @@ Configuration is loaded from a single JSON file (`configuration.json`). Any valu
 | Field | Required | Description |
 |-------|----------|-------------|
 | `port` | yes | Port the proxy listens on |
-| `oidc.userInfo.url` | yes | OIDC userinfo endpoint URL |
-| `oidc.introspect.url` | yes | OIDC token introspection endpoint URL |
+| `oidc.userInfo.url` | yes, unless `oidc.providers` is set | OIDC userinfo endpoint URL. The `oidc.*` keys below define the provider named `default` |
+| `oidc.introspect.url` | yes, unless `oidc.providers` is set | OIDC token introspection endpoint URL |
 | `oidc.introspect.credentials` | no | Credentials sent with introspect requests (e.g. `Bearer <token>`) |
-| `oidc.audience` | yes | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values as a JSON string. Tokens matching none of the configured audiences are rejected with 401 |
-| `oidc.claim.authenticated.user` | yes | Name of the userinfo claim used as the authenticated user identity (typically `email`). It must be a JSON string, otherwise the token is rejected with 401 |
-| `oidc.token.cache.expiration` | yes | How long resolved tokens are cached. Format: `<n>s`, `<n>m`, etc. |
+| `oidc.providers` | no | Named OIDC providers, for an instance trusting several SSO. A map of name → object holding `oidc.userInfo.url`, `oidc.introspect.url`, `oidc.introspect.credentials`, `oidc.audience` and `oidc.claim.authenticated.user`. A client picks one with `oidc.provider`. See [Several SSO and backends](#several-sso-and-backends) |
+| `oidc.audience` | yes, unless `oidc.providers` is set | Expected audience(s). Accepts a single string or a JSON array (e.g. `["aud-a", "aud-b"]`). A token is accepted if its `aud` claim contains at least one of the configured values as a JSON string. Tokens matching none of the configured audiences are rejected with 401 |
+| `oidc.claim.authenticated.user` | yes, unless `oidc.providers` is set | Name of the userinfo claim used as the authenticated user identity (typically `email`). It must be a JSON string, otherwise the token is rejected with 401 |
+| `oidc.token.cache.expiration` | yes | How long resolved tokens are cached, for every provider. Format: `<n>s`, `<n>m`, etc. |
 | `request.body.max.size` | no | Largest request body accepted, held in memory once the caller is authorized; above it the proxy answers `413`. Format: `100M`, `1G`, etc. Default: `100M` |
 | `request.read.timeout` | no | Longest pause allowed between two reads of a request body. Default: `30s` |
 | `request.timeout` | no | Longest time allowed to receive a whole request. Does not cover the backend's response time. Default: `5m` |
@@ -75,6 +76,49 @@ Each element in the `clients` array is a single-key object. The key is the OIDC 
 | `authorized.users` | no | Allowlist of user identities (as resolved by `oidc.claim.authenticated.user`). If non-empty, only listed users are admitted. Useful when OIDC claim configuration is impractical |
 | `allowed.urls` | no | Ordered list of URL rules (allow and deny). If omitted or empty, all URLs are allowed. Rules are evaluated in order; the first matching rule wins. An `include` holding no rule is refused at startup: to deny every call, write `{"denied": true, "endpoint": "/*"}` |
 | `url.patterns.restrictions` | no | Constraints on URL template variables, validated against OIDC claims |
+| `path.prefix` | no | Serve this entry only under this path, e.g. `/calendar`. The prefix is removed before the rules are evaluated and before the call is forwarded. Absent = the entry is served on every path no other prefix claims |
+| `oidc.provider` | no | Name of the OIDC provider that checks tokens for this entry. Default: `default`, the top-level `oidc.*` keys |
+
+## Several SSO and backends
+
+One instance can front several backends and trust several SSO. Each client entry names its provider with
+`oidc.provider` and its path with `path.prefix`:
+
+```json
+{
+  "port": "8001",
+  "oidc.token.cache.expiration": "60s",
+  "oidc.providers": {
+    "platform": {
+      "oidc.userInfo.url": "https://auth.example.com/oauth2/userinfo",
+      "oidc.introspect.url": "https://auth.example.com/oauth2/introspect",
+      "oidc.introspect.credentials": "Basic {ENV:PLATFORM_INTROSPECT_CREDENTIALS}",
+      "oidc.audience": "admin",
+      "oidc.claim.authenticated.user": "email"
+    },
+    "staff": {
+      "oidc.userInfo.url": "https://sso.example.com/oauth2/userinfo",
+      "oidc.introspect.url": "https://sso.example.com/oauth2/introspect",
+      "oidc.audience": ["mail-admin", "calendar-admin"],
+      "oidc.claim.authenticated.user": "email"
+    }
+  },
+  "clients": [
+    {"admin": {"oidc.provider": "platform", "path.prefix": "/mail", "webadmin.backend": "http://tmail:8000", "webadmin.token": "{ENV:TMAIL_TOKEN}",
+               "allowed.urls": [{"include": "classpath://functional-admin-mail-baseline.json"}]}},
+    {"admin": {"oidc.provider": "platform", "path.prefix": "/calendar", "webadmin.backend": "http://calendar:8000", "webadmin.token": "{ENV:CALENDAR_TOKEN}",
+               "allowed.urls": [{"include": "classpath://functional-admin-calendar-baseline.json"}]}},
+    {"mail-admin": {"oidc.provider": "staff", "path.prefix": "/staff/mail", "webadmin.backend": "http://tmail:8000", "webadmin.token": "{ENV:TMAIL_TOKEN}"}}
+  ]
+}
+```
+
+- `GET /calendar/domains/example.com/settings` is checked by the `platform` provider, matched against the entries under `/calendar` only, and forwarded to `http://calendar:8000/domains/example.com/settings`.
+- The longest matching prefix wins, and a prefix matches whole segments only: `/calendar` does not serve `/calendars`.
+- A path no prefix claims, and no entry without a prefix serves, is answered `404`.
+- The token is only sent to the provider of its path. All the entries under one prefix must use the same provider, otherwise the proxy refuses to start.
+- The self-service endpoints are served under each prefix too, e.g. `/calendar/.proxy/allowed/urls`.
+- A prefix starts with `/`, does not end with `/` and holds only letters, digits, `-`, `_`, `.` and `~`, with no segment starting with `.`.
 
 ### allowed.urls rules
 
