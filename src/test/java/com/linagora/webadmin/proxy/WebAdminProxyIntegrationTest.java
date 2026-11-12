@@ -5093,4 +5093,141 @@ class WebAdminProxyIntegrationTest {
             proxy().when().post("/users/bob@example.com?action=deleteData").then().statusCode(403);
         }
     }
+
+    @Nested
+    class PathPrefixes {
+
+        private ClientAndServer staffOidcServer;
+        private ClientAndServer calendarBackendServer;
+        private MockServerClient staffOidcMock;
+        private MockServerClient calendarBackendMock;
+
+        @BeforeEach
+        void restartWithPathPrefixes() throws Exception {
+            staffOidcServer = ClientAndServer.startClientAndServer(0);
+            calendarBackendServer = ClientAndServer.startClientAndServer(0);
+            staffOidcMock = new MockServerClient("localhost", staffOidcServer.getLocalPort());
+            calendarBackendMock = new MockServerClient("localhost", calendarBackendServer.getLocalPort());
+
+            String staffOidc = "http://localhost:" + staffOidcServer.getLocalPort();
+            OidcConfiguration staffProvider = new OidcConfiguration(new URL(staffOidc + "/userinfo"),
+                new IntrospectionEndpoint(new URL(staffOidc + "/introspect"), Optional.empty()),
+                List.of(AUDIENCE), "email", Duration.ofSeconds(60));
+            String mailBackend = "http://localhost:" + backendMockServer.getLocalPort();
+            String calendarBackend = "http://localhost:" + calendarBackendServer.getLocalPort();
+
+            proxyServer.stop();
+            proxyServer = WebAdminProxyGuiceServer.forModule(new WebAdminProxyModule(WebAdminProxyConfiguration.builder()
+                .oidcConfiguration(buildConfig().oidcConfiguration())
+                .oidcProvider("staff", staffProvider)
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend(mailBackend).webadminToken(WEBADMIN_TOKEN).pathPrefix("/mail").build())
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend(calendarBackend).webadminToken(WEBADMIN_TOKEN).pathPrefix("/calendar")
+                    .allowedUrls(List.of(new AllowedUrl(List.of("GET"), "/domains", false)))
+                    .build())
+                .addClient(CLIENT_ID, ClientConfiguration.builder()
+                    .webadminBackend(mailBackend).webadminToken(WEBADMIN_TOKEN).pathPrefix("/staff").oidcProvider("staff").build())
+                .build()));
+            proxyServer.start();
+        }
+
+        @AfterEach
+        void stopExtraServers() {
+            staffOidcServer.stop();
+            calendarBackendServer.stop();
+        }
+
+        private Response get(String path) {
+            return given()
+                .port(proxyServer.getPort())
+                .header("Authorization", "Bearer " + VALID_TOKEN)
+            .when()
+                .get(path);
+        }
+
+        private void stubStaffToken() {
+            staffOidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"active\":true,\"aud\":\"" + AUDIENCE + "\",\"client_id\":\"" + CLIENT_ID + "\"}"));
+            staffOidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(200)
+                    .withContentType(APPLICATION_JSON)
+                    .withBody("{\"email\":\"staff@example.com\"}"));
+        }
+
+        @Test
+        void oneTokenShouldReachTheBackendOfThePathPrefix() {
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("mail"));
+            calendarBackendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("calendar"));
+
+            assertThat(get("/mail/domains").body().asString()).isEqualTo("mail");
+            assertThat(get("/calendar/domains").body().asString()).isEqualTo("calendar");
+        }
+
+        @Test
+        void rulesShouldApplyToThePathWithoutItsPrefix() {
+            stubValidToken();
+            calendarBackendMock.when(request().withPath("/domains/example.com"))
+                .respond(response().withStatusCode(204));
+
+            assertThat(get("/calendar/domains/example.com").statusCode()).isEqualTo(403);
+            calendarBackendMock.verify(request().withPath("/domains/example.com"), VerificationTimes.never());
+        }
+
+        @Test
+        void queryOnThePrefixItselfShouldReachTheBackendRoot() {
+            stubValidToken();
+            backendMock.when(request().withMethod("GET").withPath("/").withQueryStringParameter("x", "1"))
+                .respond(response().withStatusCode(200).withBody("root"));
+
+            assertThat(get("/mail?x=1").body().asString()).isEqualTo("root");
+        }
+
+        @Test
+        void pathOutsideEveryPrefixShouldBeNotFound() {
+            stubValidToken();
+
+            assertThat(get("/domains").statusCode()).isEqualTo(404);
+            assertThat(get("/mailbox/domains").statusCode()).isEqualTo(404);
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.never());
+        }
+
+        @Test
+        void tokenShouldOnlyBeSentToTheProviderOfThePathPrefix() {
+            stubStaffToken();
+            backendMock.when(request().withMethod("GET").withPath("/domains"))
+                .respond(response().withStatusCode(200).withBody("mail"));
+
+            assertThat(get("/staff/domains").statusCode()).isEqualTo(200);
+            staffOidcMock.verify(request().withPath("/introspect"), VerificationTimes.once());
+            oidcMock.verify(request().withPath("/introspect"), VerificationTimes.never());
+            oidcMock.verify(request().withPath("/userinfo"), VerificationTimes.never());
+        }
+
+        @Test
+        void tokenOfAnotherProviderShouldBeRejected() {
+            stubValidToken();
+            staffOidcMock.when(request().withMethod("POST").withPath("/introspect"))
+                .respond(response().withStatusCode(200).withContentType(APPLICATION_JSON).withBody("{\"active\":false}"));
+            staffOidcMock.when(request().withMethod("GET").withPath("/userinfo"))
+                .respond(response().withStatusCode(401));
+
+            assertThat(get("/staff/domains").statusCode()).isEqualTo(401);
+        }
+
+        @Test
+        void selfServiceEndpointsShouldBeServedUnderThePathPrefix() {
+            stubStaffToken();
+
+            Response response = get("/staff/.proxy/whoami");
+
+            assertThat(response.statusCode()).isEqualTo(200);
+            assertThat(response.body().asString()).contains("staff@example.com");
+        }
+    }
 }
