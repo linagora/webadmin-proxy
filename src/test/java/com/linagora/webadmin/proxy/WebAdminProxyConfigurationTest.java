@@ -941,6 +941,156 @@ class WebAdminProxyConfigurationTest {
     }
 
     @Nested
+    class OidcProvidersAndPathPrefixes {
+
+        private static final String TWO_PROVIDERS = """
+            {
+              "port": "8001",
+              "oidc.token.cache.expiration": "60s",
+              "oidc.providers": {
+                "platform": {
+                  "oidc.userInfo.url": "http://platform/userinfo",
+                  "oidc.introspect.url": "http://platform/introspect",
+                  "oidc.audience": "admin",
+                  "oidc.claim.authenticated.user": "email"
+                },
+                "staff": {
+                  "oidc.userInfo.url": "http://staff/userinfo",
+                  "oidc.introspect.url": "http://staff/introspect",
+                  "oidc.audience": ["mail-admin", "calendar-admin"],
+                  "oidc.claim.authenticated.user": "email"
+                }
+              },
+              "clients": [
+                {"admin": {"webadmin.backend": "http://tmail:8000", "webadmin.token": "t", "oidc.provider": "platform", "path.prefix": "/mail"}},
+                {"admin": {"webadmin.backend": "http://calendar:8000", "webadmin.token": "t", "oidc.provider": "platform", "path.prefix": "/calendar"}},
+                {"mail-admin": {"webadmin.backend": "http://tmail:8000", "webadmin.token": "t", "oidc.provider": "staff", "path.prefix": "/staff"}}
+              ]
+            }
+            """;
+
+        @Test
+        void topLevelOidcKeysShouldDefineTheDefaultProvider() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(MINIMAL));
+
+            assertThat(config.oidcProviders()).containsOnlyKeys("default");
+            ClientConfiguration client = config.clientsForId("my-client").get(0);
+            assertThat(client.oidcProvider()).isEqualTo("default");
+            assertThat(client.pathPrefix()).isEmpty();
+            assertThat(config.pathPrefixOf("/domains")).contains("");
+        }
+
+        @Test
+        void shouldParseNamedProviders() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(TWO_PROVIDERS));
+
+            assertThat(config.oidcProviders()).containsOnlyKeys("platform", "staff");
+            assertThat(config.oidcProviderFor("/calendar").userInfoUrl().toString()).isEqualTo("http://platform/userinfo");
+            assertThat(config.oidcProviderFor("/staff").audiences()).containsExactly("mail-admin", "calendar-admin");
+            assertThat(config.tokenCacheExpiration()).isEqualTo(Duration.ofSeconds(60));
+        }
+
+        @Test
+        void pathPrefixShouldMatchWholeSegmentsOnly() throws Exception {
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(TWO_PROVIDERS));
+
+            assertThat(config.pathPrefixOf("/calendar")).contains("/calendar");
+            assertThat(config.pathPrefixOf("/calendar/domains/a.org/settings")).contains("/calendar");
+            assertThat(config.pathPrefixOf("/calendars/domains")).isEmpty();
+            assertThat(config.pathPrefixOf("/domains")).isEmpty();
+        }
+
+        @Test
+        void longestPathPrefixShouldWin() throws Exception {
+            String json = TWO_PROVIDERS.replace("\"path.prefix\": \"/staff\"", "\"path.prefix\": \"/calendar/staff\"");
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+
+            assertThat(config.pathPrefixOf("/calendar/staff/domains")).contains("/calendar/staff");
+            assertThat(config.pathPrefixOf("/calendar/domains")).contains("/calendar");
+        }
+
+        @Test
+        void unknownProviderShouldBeRejected() throws Exception {
+            File config = writeConfig(TWO_PROVIDERS.replace("\"oidc.provider\": \"staff\"", "\"oidc.provider\": \"nope\""));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown OIDC provider 'nope'");
+        }
+
+        @Test
+        void clientWithoutProviderShouldNeedTheDefaultOne() throws Exception {
+            File config = writeConfig(TWO_PROVIDERS.replace("\"oidc.provider\": \"staff\", ", ""));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown OIDC provider 'default'");
+        }
+
+        @Test
+        void providersSharingAPathPrefixShouldBeRejected() throws Exception {
+            File config = writeConfig(TWO_PROVIDERS.replace("\"path.prefix\": \"/staff\"", "\"path.prefix\": \"/mail\""));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("different OIDC providers");
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"calendar", "/calendar/", "/", "/a//b", "/a/../b", "/.hidden", "/a?b", "/a%2Fb", "/a b"})
+        void invalidPathPrefixShouldBeRejected(String prefix) throws Exception {
+            File config = writeConfig(TWO_PROVIDERS.replace("\"path.prefix\": \"/staff\"", "\"path.prefix\": \"" + prefix + "\""));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalid path.prefix");
+        }
+
+        @Test
+        void providerMissingARequiredKeyShouldBeRejected() throws Exception {
+            File config = writeConfig(TWO_PROVIDERS.replace("\"oidc.introspect.url\": \"http://staff/introspect\",", ""));
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(config))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("OIDC provider 'staff' is missing oidc.introspect.url");
+        }
+
+        @Test
+        void defaultProviderDefinedTwiceShouldBeRejected() throws Exception {
+            String json = MINIMAL.replaceFirst("\\{", """
+                {
+                  "oidc.providers": {
+                    "default": {
+                      "oidc.userInfo.url": "http://other/userinfo",
+                      "oidc.introspect.url": "http://other/introspect",
+                      "oidc.audience": "webadmin-proxy",
+                      "oidc.claim.authenticated.user": "email"
+                    }
+                  },
+                """);
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(writeConfig(json)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("defined twice");
+        }
+
+        @Test
+        void configurationWithoutProviderShouldBeRejected() throws Exception {
+            String json = """
+                {
+                  "port": "8001",
+                  "oidc.token.cache.expiration": "60s",
+                  "clients": []
+                }
+                """;
+
+            assertThatThrownBy(() -> WebAdminProxyConfiguration.from(writeConfig(json)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("No OIDC provider");
+        }
+    }
+
+    @Nested
     class PredefinedProfiles {
 
         static Stream<String> predefinedProfileNames() throws IOException {
