@@ -4754,6 +4754,38 @@ class WebAdminProxyIntegrationTest {
         void shouldReturn403WhenRecomputingQuotasOfThePlatform() {
             proxy().when().post("/quota/users?domain=example.com&task=RecomputeCurrentQuotas").then().statusCode(403);
         }
+
+        @Test
+        void shouldAllowProvisioningUserTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
+        }
+
+        @Test
+        void shouldAllowProvisioningDomainTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenProvisioningUserTemplatesFromUserOfAnotherDomain() {
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=victim@other.com").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/templates?from=victim@other.com&action=provision").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com&from=victim@other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenProvisioningDomainTemplatesFromUserOfAnotherDomain() {
+            proxy().when().post("/domains/example.com/templates?action=provision&from=victim@other.com").then().statusCode(403);
+            proxy().when().post("/domains/example.com/templates?from=victim@other.com&action=provision").then().statusCode(403);
+            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com&from=victim@other.com")
+                .then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenProvisioningTemplatesOfAnotherDomain() {
+            proxy().when().post("/users/bob@other.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
+            proxy().when().post("/domains/other.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
+        }
     }
 
     @Nested
