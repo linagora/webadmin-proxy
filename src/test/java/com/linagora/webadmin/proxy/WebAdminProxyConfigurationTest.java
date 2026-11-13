@@ -849,7 +849,7 @@ class WebAdminProxyConfigurationTest {
                 """;
             WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
             var urls = config.clientsForId("my-client").get(0).allowedUrls();
-            assertThat(urls).hasSize(30);
+            assertThat(urls).hasSize(34);
             assertThat(urls.stream().map(u -> u.endpointPattern()))
                 .contains("/domains/{domain}", "/users/%@{domain}", "/tasks/{domain}/*");
         }
