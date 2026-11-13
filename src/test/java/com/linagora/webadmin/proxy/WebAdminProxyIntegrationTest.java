@@ -4705,6 +4705,58 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
+    class FunctionalAdminMailBaselineProfile extends ShippedProfile {
+
+        @Override
+        String profile() {
+            return "functional-admin-mail-baseline.json";
+        }
+
+        @Override
+        String userEmail() {
+            return "alice@example.com";
+        }
+
+        @Override
+        boolean domainScoped() {
+            return true;
+        }
+
+        @Test
+        void shouldAllowMessageExpiryOfUserOfOwnDomain() {
+            proxy().when().delete("/messages?user=bob@example.com&mailbox=Trash&olderThan=30d").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenTriagingMessagesOfThePlatform() {
+            proxy().contentType("application/json").body("{}")
+                .when().post("/messages?user=bob@example.com&action=triage&mailboxName=INBOX").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenSolvingMessageInconsistenciesOfThePlatform() {
+            proxy().when().post("/messages?user=bob@example.com&task=SolveInconsistencies").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403OnOtherVerbsOfMessagesOfUserOfOwnDomain() {
+            proxy().when().get("/messages?user=bob@example.com").then().statusCode(403);
+            proxy().when().put("/messages?user=bob@example.com").then().statusCode(403);
+            proxy().when().patch("/messages?user=bob@example.com").then().statusCode(403);
+        }
+
+        @Test
+        void shouldAllowListingQuotaOfOwnDomain() {
+            proxy().when().get("/quota/users?domain=example.com").then().statusCode(200);
+        }
+
+        @Test
+        void shouldReturn403WhenRecomputingQuotasOfThePlatform() {
+            proxy().when().post("/quota/users?domain=example.com&task=RecomputeCurrentQuotas").then().statusCode(403);
+        }
+    }
+
+    @Nested
     class LinagoraMailFunctionalSupportProfile extends ShippedProfile {
 
         @Override

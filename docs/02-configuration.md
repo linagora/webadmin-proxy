@@ -309,8 +309,8 @@ your own configuration if you need to diverge, since classpath profiles change w
 signature templates…); users of that domain and all their sub-resources (`/users/%@{domain}`,
 `/users/%@{domain}/*` — mailboxes, identities, labels, delegation, JMAP settings…); user and domain
 quotas; address aliases and forwards; the user's mapping sources; vacation; deleted-message vault;
-team-mailbox membership; message search by user (`/messages?user=%@{domain}`); per-domain quota
-listing (`/quota/users?domain={domain}`); IMAP/network channels; and per-domain tasks
+team-mailbox membership; per-user message expiry (`DELETE /messages?user=%@{domain}`); per-domain
+quota listing (`GET /quota/users?domain={domain}`); IMAP/network channels; and per-domain tasks
 (`/tasks/{domain}`, `/tasks/{domain}/*`).
 
 **Withholds**: every unscoped endpoint. No `/domains`, `/users`, `/healthcheck`, `/metrics`,
@@ -325,6 +325,15 @@ both addresses in `{domain}`. Reads stay granted. Likewise a user rename
 (`POST /users/{user}/rename/{newUser}`) requires both users in `{domain}`: the rename moves the
 delegations and forwards of the renamed user onto the target, so a target in another domain would
 hand that account over.
+
+The `/messages` and `/quota/users` rules are bound to the one verb the backend scopes to the given
+`user` or `domain`. On every other verb James ignores that parameter and acts on the whole platform:
+`POST /messages?action=triage` runs a rule over the mailboxes of every user of every domain,
+`POST /messages?task=SolveInconsistencies` repairs every message, and
+`POST /quota/users?task=RecomputeCurrentQuotas` recomputes the quota of every user. A leading rule
+also denies every `POST /messages`, so that no later rule — of the baseline or placed after it —
+reopens those platform-wide tasks. Rules placed before the baseline still win: do not grant
+`POST /messages` there to a tenant admin.
 
 **Use as**: a starting point, combined with deny rules, entry-point reads, and a `domain` restriction.
 
