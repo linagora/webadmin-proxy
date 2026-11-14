@@ -4346,7 +4346,7 @@ class WebAdminProxyIntegrationTest {
             return WebAdminProxyConfiguration.from(configFile.toFile());
         }
 
-        io.restassured.specification.RequestSpecification proxy() {
+        public io.restassured.specification.RequestSpecification proxy() {
             return given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN);
         }
@@ -4416,7 +4416,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalAdminProfile extends ShippedProfile {
+    class LinagoraMailFunctionalAdminProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
 
         @Override
         String profile() {
@@ -4587,7 +4587,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalBaselineProfile extends ShippedProfile {
+    class LinagoraMailFunctionalBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
 
         @Override
         String profile() {
@@ -4705,7 +4705,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class FunctionalAdminMailBaselineProfile extends ShippedProfile {
+    class FunctionalAdminMailBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
 
         @Override
         String profile() {
@@ -4754,42 +4754,58 @@ class WebAdminProxyIntegrationTest {
         void shouldReturn403WhenRecomputingQuotasOfThePlatform() {
             proxy().when().post("/quota/users?domain=example.com&task=RecomputeCurrentQuotas").then().statusCode(403);
         }
+    }
+
+    /** Profiles of a tenant admin of {@code example.com}: templates never come from, nor go to, another tenant. */
+    interface TenantTemplateProvisioningContract {
+
+        io.restassured.specification.RequestSpecification proxy();
 
         @Test
-        void shouldAllowProvisioningUserTemplatesFromUserOfOwnDomain() {
-            proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
-        }
-
-        @Test
-        void shouldAllowProvisioningDomainTemplatesFromUserOfOwnDomain() {
-            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
-        }
-
-        @Test
-        void shouldReturn403WhenProvisioningUserTemplatesFromUserOfAnotherDomain() {
+        default void shouldReturn403WhenProvisioningUserTemplatesFromUserOfAnotherDomain() {
             proxy().when().post("/users/bob@example.com/templates?action=provision&from=victim@other.com").then().statusCode(403);
             proxy().when().post("/users/bob@example.com/templates?from=victim@other.com&action=provision").then().statusCode(403);
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=victim@other.com&folderName=INBOX")
+                .then().statusCode(403);
             proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com&from=victim@other.com")
                 .then().statusCode(403);
         }
 
         @Test
-        void shouldReturn403WhenProvisioningDomainTemplatesFromUserOfAnotherDomain() {
+        default void shouldReturn403WhenProvisioningDomainTemplatesFromUserOfAnotherDomain() {
             proxy().when().post("/domains/example.com/templates?action=provision&from=victim@other.com").then().statusCode(403);
             proxy().when().post("/domains/example.com/templates?from=victim@other.com&action=provision").then().statusCode(403);
+            proxy().when().post("/domains/example.com/templates?action=provision&from=victim@other.com&folderName=INBOX")
+                .then().statusCode(403);
             proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com&from=victim@other.com")
                 .then().statusCode(403);
         }
 
         @Test
-        void shouldReturn403WhenProvisioningTemplatesOfAnotherDomain() {
+        default void shouldReturn403WhenProvisioningTemplatesOfAnotherDomain() {
             proxy().when().post("/users/bob@other.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
             proxy().when().post("/domains/other.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
         }
     }
 
+    /** Tenant admin profiles granting template provisioning within {@code example.com}. */
+    interface TenantTemplateProvisioningGrantedContract extends TenantTemplateProvisioningContract {
+
+        @Test
+        default void shouldAllowProvisioningUserTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
+            proxy().when().post("/users/bob@example.com/templates?from=carol@example.com&action=provision&folderName=Templates")
+                .then().statusCode(200);
+        }
+
+        @Test
+        default void shouldAllowProvisioningDomainTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com").then().statusCode(200);
+        }
+    }
+
     @Nested
-    class LinagoraMailFunctionalSupportProfile extends ShippedProfile {
+    class LinagoraMailFunctionalSupportProfile extends ShippedProfile implements TenantTemplateProvisioningContract {
 
         @Override
         String profile() {
@@ -5118,7 +5134,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalGodLdapRest extends FunctionalLdapRestManagedProfile {
+    class LinagoraMailFunctionalGodLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract {
 
         @Override
         String profile() {
@@ -5141,7 +5157,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalAdminLdapRest extends FunctionalLdapRestManagedProfile {
+    class LinagoraMailFunctionalAdminLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract {
 
         @Override
         String profile() {
@@ -5163,7 +5179,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalSupportLdapRest extends FunctionalLdapRestManagedProfile {
+    class LinagoraMailFunctionalSupportLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningContract {
 
         @Override
         String profile() {
