@@ -324,7 +324,12 @@ the destination; and writing a user alias (`/address/aliases/{address}/sources/{
 both addresses in `{domain}`. Reads stay granted. Likewise a user rename
 (`POST /users/{user}/rename/{newUser}`) requires both users in `{domain}`: the rename moves the
 delegations and forwards of the renamed user onto the target, so a target in another domain would
-hand that account over.
+hand that account over. Template provisioning
+(`POST /users/{user}/templates?action=provision&from=…` and its `/domains/{domain}` counterpart)
+requires the `from` source user in `{domain}` too: the backend copies the full content of that
+user's folder into the target, so a source in another domain would expose another tenant's mail.
+Rules placed before the baseline still win: an earlier provisioning grant must bind `from` the same
+way (`…templates?action=provision&from=%@{domain}&{params}`).
 
 The `/messages` and `/quota/users` rules are bound to the one verb the backend scopes to the given
 `user` or `domain`. On every other verb James ignores that parameter and acts on the whole platform:

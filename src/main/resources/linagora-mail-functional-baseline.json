@@ -70,7 +70,7 @@
     "verb": [
       "POST"
     ],
-    "endpoint": "/users/%@{domain}/templates?action=provision&{params}"
+    "endpoint": "/users/%@{domain}/templates?action=provision&from=%@{domain}&{params}"
   },
   {
     "verb": [

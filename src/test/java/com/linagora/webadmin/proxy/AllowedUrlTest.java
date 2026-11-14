@@ -400,10 +400,22 @@ class AllowedUrlTest {
 
         @Test
         void otherParamsPlaceholderShouldImposeNoConstraint() {
-            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/templates?action=provision&{params}");
-            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision")).isTrue();
-            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=a&to=b")).isTrue();
-            assertThat(rule.matches("POST", "/users/bob@example.com/templates?from=a")).isFalse();
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/templates?action=provision&from=%@{domain}&{params}");
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=carol@example.com")).isTrue();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=carol@example.com&folderName=a&prune"))
+                .isTrue();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?from=carol@example.com")).isFalse();
+        }
+
+        @Test
+        void otherParamsPlaceholderShouldKeepListedParamsBound() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}/templates?action=provision&from=%@{domain}&{params}");
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision")).isFalse();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=victim@other.com")).isFalse();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?from=victim@other.com&action=provision&folderName=INBOX"))
+                .isFalse();
+            assertThat(rule.matches("POST", "/users/bob@example.com/templates?action=provision&from=carol@example.com&from=victim@other.com"))
+                .isFalse();
         }
 
         @Test
