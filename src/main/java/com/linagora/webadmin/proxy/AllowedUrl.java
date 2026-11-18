@@ -16,6 +16,7 @@ package com.linagora.webadmin.proxy;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
+import java.util.stream.Collectors;
 
 public class AllowedUrl {
 
@@ -87,16 +89,13 @@ public class AllowedUrl {
         String rawPath = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
         String queryString = queryIdx >= 0 ? fullUri.substring(queryIdx + 1) : "";
 
-        String path = decodePath(rawPath);
-        Matcher m = compiledPathPattern.matcher(path);
+        Matcher m = compiledPathPattern.matcher(segmentWiseDecodedPath(rawPath));
         if (!m.matches()) {
             return Optional.empty();
         }
 
         Map<String, String> captured = new HashMap<>();
-        for (String varName : pathVariableNames) {
-            captured.put(varName, m.group(pathGroupNames.get(varName)));
-        }
+        pathVariableNames.forEach(varName -> captured.put(varName, decodePath(m.group(pathGroupNames.get(varName)))));
 
         if (compiledQueryParams.isEmpty()) {
             return Optional.of(captured);
@@ -208,6 +207,19 @@ public class AllowedUrl {
      */
     static String decodePath(String rawPath) {
         return URLDecoder.decode(rawPath.replace("+", "%2B"), StandardCharsets.UTF_8);
+    }
+
+    /**
+     * The backend splits the raw path on '/' before decoding each segment: an encoded slash ({@code %2F})
+     * stays inside its segment. Each segment is thus decoded on its own, and its '%' and '/' re-escaped, so
+     * that a '{var}' or '%' never spans more than one backend segment. Captured values are decoded afterwards.
+     */
+    private static String segmentWiseDecodedPath(String rawPath) {
+        return Arrays.stream(rawPath.split("/", -1))
+            .map(segment -> decodePath(segment)
+                .replace("%", "%25")
+                .replace("/", "%2F"))
+            .collect(Collectors.joining("/"));
     }
 
     private static Map<String, List<String>> parseQueryString(String queryString) {
