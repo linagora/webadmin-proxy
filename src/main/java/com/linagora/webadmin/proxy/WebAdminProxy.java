@@ -257,8 +257,8 @@ public class WebAdminProxy implements Startable {
     }
 
     /**
-     * The whole path is decoded before being split, as {@link AllowedUrl} decides on the decoded path:
-     * a dot segment hidden behind an encoded slash ({@code x%2F..%2Fother.com}) is refused too.
+     * The whole path is decoded before being split: a dot segment hidden behind an encoded slash
+     * ({@code x%2F..%2Fother.com}) is refused too, whatever a component further down makes of it.
      */
     private static boolean hasNoDotSegment(String rawPath) {
         try {

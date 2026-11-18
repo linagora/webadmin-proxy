@@ -4751,6 +4751,12 @@ class WebAdminProxyIntegrationTest {
         }
 
         @Test
+        void shouldReturn403WhenAnEncodedSlashHidesAnAliasSourceOfAnotherDomain() {
+            proxy().urlEncodingEnabled(false)
+                .when().put("/address/aliases/bob@example.com/sources/x%2F@other.com").then().statusCode(403);
+        }
+
+        @Test
         void shouldReturn403WhenRecomputingQuotasOfThePlatform() {
             proxy().when().post("/quota/users?domain=example.com&task=RecomputeCurrentQuotas").then().statusCode(403);
         }
@@ -4864,6 +4870,22 @@ class WebAdminProxyIntegrationTest {
             proxy().when().delete("/domains/example.com/team-mailboxes/sales/extraSenders/bob@example.com").then().statusCode(403);
             proxy().when().put("/domains/example.com/team-mailboxes/sales/mailboxes/INBOX/extraAcl/bob@example.com").then().statusCode(403);
             proxy().when().put("/domains/example.com/team-mailboxes/sales/mailboxes/INBOX/subaddressing").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenAnEncodedSlashHidesAForwardTarget() {
+            proxy().urlEncodingEnabled(false)
+                .when().put("/address/forwards/bob@example.com/targets/me%2F@attacker.example").then().statusCode(403);
+            proxy().urlEncodingEnabled(false)
+                .when().put("/address/forwards/bob@example.com/targets/me%2f@attacker.example").then().statusCode(403);
+        }
+
+        @Test
+        void shouldReturn403WhenAnEncodedSlashHidesAnAliasOrADelegatedUser() {
+            proxy().urlEncodingEnabled(false)
+                .when().put("/address/aliases/bob@example.com/sources/x%2F@example.com").then().statusCode(403);
+            proxy().urlEncodingEnabled(false)
+                .when().put("/users/bob@example.com/authorizedUsers/x%2F@attacker.example").then().statusCode(403);
         }
 
         @Test

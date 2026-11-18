@@ -54,6 +54,46 @@ class AllowedUrlTest {
     }
 
     @Test
+    void templateVariableShouldMatchASegmentHoldingAnEncodedSlash() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/forwards/{base}/targets/{destination}");
+        assertThat(rule.match("PUT", "/forwards/a@mine.example/targets/x%2F@ext.example"))
+            .contains(Map.of("base", "a@mine.example", "destination", "x/@ext.example"));
+    }
+
+    @Test
+    void templateVariableShouldMatchASegmentHoldingALowerCaseEncodedSlash() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}");
+        assertThat(rule.match("GET", "/users/a%2fb"))
+            .contains(Map.of("user", "a/b"));
+    }
+
+    @Test
+    void encodedSlashShouldNotActAsASegmentSeparator() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/forwards/{base}/targets/{destination}/{other}");
+        assertThat(rule.matches("PUT", "/forwards/a@mine.example/targets/x%2F@ext.example")).isFalse();
+    }
+
+    @Test
+    void localPartWildcardShouldMatchASegmentHoldingAnEncodedSlash() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/%@{domain}");
+        assertThat(rule.match("GET", "/users/a%2Fb@mine.example"))
+            .contains(Map.of("domain", "mine.example"));
+    }
+
+    @Test
+    void encodedPercentShouldBeCapturedAsPercent() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}");
+        assertThat(rule.match("GET", "/users/a%252Fb"))
+            .contains(Map.of("user", "a%2Fb"));
+    }
+
+    @Test
+    void encodedPercentAndEncodedSlashShouldNotCaptureTheSameValue() {
+        AllowedUrl rule = new AllowedUrl(List.of(), "/users/{user}/rename/{user}");
+        assertThat(rule.matches("POST", "/users/a%252Fb/rename/a%2Fb")).isFalse();
+    }
+
+    @Test
     void plusInQueryShouldStillBeFormDecoded() {
         AllowedUrl rule = new AllowedUrl(List.of(), "/users?name={name}");
         assertThat(rule.match("GET", "/users?name=a+b"))
