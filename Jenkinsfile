@@ -68,7 +68,7 @@ pipeline {
                     // by the Compile stage (multi-stage build copies them into the image;
                     // no Maven rebuild inside Docker). Replaces the former jib buildTar.
                     sh 'mvn -B dependency:copy-dependencies -DincludeScope=runtime -DoutputDirectory=target/dependency'
-                    sh 'docker build -t linagora/webadmin-proxy:$DOCKER_TAG -t linagora/webadmin-proxy:latest .'
+                    sh 'docker build --pull -t linagora/webadmin-proxy:$DOCKER_TAG -t linagora/webadmin-proxy:latest .'
                     sh 'echo $DOCKER_HUB_CREDENTIAL_PSW | docker login -u $DOCKER_HUB_CREDENTIAL_USR --password-stdin'
                     sh 'docker push linagora/webadmin-proxy:$DOCKER_TAG'
                 }
