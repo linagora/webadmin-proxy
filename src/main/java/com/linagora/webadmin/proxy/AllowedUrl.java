@@ -290,8 +290,7 @@ public class AllowedUrl {
         int start = 0;
         while (true) {
             int end = rawPath.indexOf('/', start);
-            String segment = rawPath.substring(start, end < 0 ? rawPath.length() : end);
-            appendReEscaped(result, segment.indexOf('%') < 0 ? segment : decodePath(segment));
+            appendDecodedSegment(result, rawPath, start, end < 0 ? rawPath.length() : end);
             if (end < 0) {
                 return result.toString();
             }
@@ -300,17 +299,20 @@ public class AllowedUrl {
         }
     }
 
-    private static void appendReEscaped(StringBuilder result, String decodedSegment) {
-        for (int i = 0; i < decodedSegment.length(); i++) {
-            char c = decodedSegment.charAt(i);
-            if (c == '%') {
-                result.append("%25");
-            } else if (c == '/') {
-                result.append("%2F");
-            } else {
-                result.append(c);
-            }
+    /**
+     * A segment without '%' has nothing to decode nor to re-escape: it is copied as is, in bulk.
+     */
+    private static void appendDecodedSegment(StringBuilder result, String rawPath, int start, int end) {
+        if (rawPath.indexOf('%', start, end) < 0) {
+            result.append(rawPath, start, end);
+            return;
         }
+        String decodedSegment = decodePath(rawPath.substring(start, end));
+        if (decodedSegment.indexOf('%') < 0 && decodedSegment.indexOf('/') < 0) {
+            result.append(decodedSegment);
+            return;
+        }
+        result.append(decodedSegment.replace("%", "%25").replace("/", "%2F"));
     }
 
     private static Map<String, List<String>> parseQueryString(String queryString) {
@@ -322,10 +324,27 @@ public class AllowedUrl {
             int eq = param.indexOf('=');
             String name = URLDecoder.decode(eq >= 0 ? param.substring(0, eq) : param, StandardCharsets.UTF_8);
             String value = URLDecoder.decode(eq >= 0 ? param.substring(eq + 1) : "", StandardCharsets.UTF_8);
-            // Every occurrence is kept: a repeated name is how a rule tells a multi-valued parameter.
-            result.merge(name, List.of(value), AllowedUrl::appendValues);
+            addValue(result, name, value);
         }
         return result;
+    }
+
+    /**
+     * Every occurrence is kept: a repeated name is how a rule tells a multi-valued parameter. Most names
+     * appear once and get a compact single-value list; only a repeated one is given a growable list.
+     */
+    private static void addValue(Map<String, List<String>> params, String name, String value) {
+        List<String> values = params.get(name);
+        if (values == null) {
+            params.put(name, List.of(value));
+        } else if (values instanceof ArrayList<String> growable) {
+            growable.add(value);
+        } else {
+            List<String> multiValued = new ArrayList<>();
+            multiValued.add(values.getFirst());
+            multiValued.add(value);
+            params.put(name, multiValued);
+        }
     }
 
     private static int countParams(String queryString) {
@@ -334,12 +353,6 @@ public class AllowedUrl {
             count++;
         }
         return count;
-    }
-
-    private static List<String> appendValues(List<String> values, List<String> added) {
-        List<String> result = values instanceof ArrayList ? values : new ArrayList<>(values);
-        result.addAll(added);
-        return result;
     }
 
     /**
