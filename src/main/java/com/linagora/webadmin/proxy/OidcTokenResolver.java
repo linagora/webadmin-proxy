@@ -16,6 +16,7 @@ package com.linagora.webadmin.proxy;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
@@ -34,6 +35,7 @@ public class OidcTokenResolver {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(OidcTokenResolver.class);
     private static final String SID_CLAIM = "sid";
+    private static final Pattern SCOPE_SEPARATOR = Pattern.compile("\\s+");
 
     private final DefaultCheckTokenClient checkTokenClient;
     private final UserinfoClient userinfoClient;
@@ -118,7 +120,7 @@ public class OidcTokenResolver {
             return true;
         }
         List<String> tokenScopes = introspect.scope()
-            .map(s -> List.of(s.split("\\s+")))
+            .map(s -> List.of(SCOPE_SEPARATOR.split(s)))
             .orElse(List.of());
         return tokenScopes.containsAll(requiredScopes);
     }
