@@ -28,13 +28,15 @@ public class AllowedUrl {
 
     /**
      * A request target, as every rule reads it. What only depends on the request (the segment-wise decoded
-     * path) is computed once, on first use, and shared by all the rules tried for this request.
+     * path, the decoded query parameters) is computed once, on first use, and shared by all the rules tried
+     * for this request.
      */
     public static final class Target {
         private final String method;
         private final String rawPath;
         private final String rawQuery;
         private String decodedPath;
+        private Map<String, List<String>> queryParams;
 
         private Target(String method, String rawPath, String rawQuery) {
             this.method = method;
@@ -62,6 +64,13 @@ public class AllowedUrl {
                 decodedPath = segmentWiseDecodedPath(rawPath);
             }
             return decodedPath;
+        }
+
+        Map<String, List<String>> queryParams() {
+            if (queryParams == null) {
+                queryParams = parseQueryString(rawQuery);
+            }
+            return queryParams;
         }
     }
 
@@ -140,7 +149,7 @@ public class AllowedUrl {
         if (compiledQueryParams.isEmpty()) {
             return Optional.of(captured);
         }
-        Map<String, List<String>> requestParams = parseQueryString(target.rawQuery());
+        Map<String, List<String>> requestParams = target.queryParams();
         for (Map.Entry<String, CompiledQueryParam> entry : compiledQueryParams.entrySet()) {
             String paramName = entry.getKey();
             CompiledQueryParam cqp = entry.getValue();
@@ -290,14 +299,28 @@ public class AllowedUrl {
         if (queryString.isEmpty()) {
             return Map.of();
         }
-        Map<String, List<String>> result = new HashMap<>();
+        Map<String, List<String>> result = HashMap.newHashMap(countParams(queryString));
         for (String param : queryString.split("&")) {
             int eq = param.indexOf('=');
-            String name = eq >= 0 ? param.substring(0, eq) : param;
-            String value = eq >= 0 ? param.substring(eq + 1) : "";
-            result.computeIfAbsent(URLDecoder.decode(name, StandardCharsets.UTF_8), key -> new ArrayList<>())
-                .add(URLDecoder.decode(value, StandardCharsets.UTF_8));
+            String name = URLDecoder.decode(eq >= 0 ? param.substring(0, eq) : param, StandardCharsets.UTF_8);
+            String value = URLDecoder.decode(eq >= 0 ? param.substring(eq + 1) : "", StandardCharsets.UTF_8);
+            // Every occurrence is kept: a repeated name is how a rule tells a multi-valued parameter.
+            result.merge(name, List.of(value), AllowedUrl::appendValues);
         }
+        return result;
+    }
+
+    private static int countParams(String queryString) {
+        int count = 1;
+        for (int i = queryString.indexOf('&'); i >= 0; i = queryString.indexOf('&', i + 1)) {
+            count++;
+        }
+        return count;
+    }
+
+    private static List<String> appendValues(List<String> values, List<String> added) {
+        List<String> result = values instanceof ArrayList ? values : new ArrayList<>(values);
+        result.addAll(added);
         return result;
     }
 
