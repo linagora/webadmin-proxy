@@ -205,6 +205,15 @@ class AllowedUrlTest {
     }
 
     @Test
+    void verbMatchShouldIgnoreTheCaseOfBothTheRuleAndTheMethod() {
+        AllowedUrl rule = new AllowedUrl(List.of("Delete", "pUT"), "/domains");
+        assertThat(rule.matches("dELETE", "/domains")).isTrue();
+        assertThat(rule.matches("put", "/domains")).isTrue();
+        assertThat(rule.matches("POST", "/domains")).isFalse();
+        assertThat(rule.verbs()).containsExactly("Delete", "pUT");
+    }
+
+    @Test
     void deniedGetRuleShouldAlsoMatchHead() {
         AllowedUrl denied = new AllowedUrl(List.of("GET", "DELETE"), "/domains/{domain}/tasks/{id}", true);
         assertThat(denied.matches("HEAD", "/domains/mine.example/tasks/abc")).isTrue();
