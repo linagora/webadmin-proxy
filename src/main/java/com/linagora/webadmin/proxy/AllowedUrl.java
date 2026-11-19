@@ -17,9 +17,12 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -33,6 +36,7 @@ public class AllowedUrl {
      */
     public static final class Target {
         private final String method;
+        private final String upperCaseMethod;
         private final String rawPath;
         private final String rawQuery;
         private String decodedPath;
@@ -40,6 +44,7 @@ public class AllowedUrl {
 
         private Target(String method, String rawPath, String rawQuery) {
             this.method = method;
+            this.upperCaseMethod = method.toUpperCase(Locale.ROOT);
             this.rawPath = rawPath;
             this.rawQuery = rawQuery;
         }
@@ -82,6 +87,7 @@ public class AllowedUrl {
     }
 
     private final List<String> verbs;
+    private final Set<String> coveredVerbs;
     private final String endpointPattern;
     private final boolean denied;
     private final Pattern compiledPathPattern;
@@ -95,6 +101,7 @@ public class AllowedUrl {
 
     public AllowedUrl(List<String> verbs, String endpointPattern, boolean denied) {
         this.verbs = List.copyOf(verbs);
+        this.coveredVerbs = coveredVerbs(this.verbs);
         this.endpointPattern = endpointPattern;
         this.denied = denied;
 
@@ -134,7 +141,7 @@ public class AllowedUrl {
      * Same as {@link #match(String, String)}, for a target built once and shared by all the rules tried.
      */
     public Optional<Map<String, String>> match(Target target) {
-        if (!coversVerb(target.method())) {
+        if (!coversVerb(target.upperCaseMethod)) {
             return Optional.empty();
         }
 
@@ -184,11 +191,22 @@ public class AllowedUrl {
     /**
      * A rule listing GET also covers HEAD: HEAD is GET without content (RFC 9110 section 9.3.2) and the
      * backend serves it with its GET route, so a GET deny rule must refuse it too.
+     * Verbs are compared case-insensitively: both sides are upper-cased, the rule's verbs once and for all.
      */
-    private boolean coversVerb(String method) {
-        return verbs.isEmpty()
-            || verbs.stream().anyMatch(verb -> verb.equalsIgnoreCase(method)
-                || (verb.equalsIgnoreCase("GET") && method.equalsIgnoreCase("HEAD")));
+    private static Set<String> coveredVerbs(List<String> verbs) {
+        Set<String> covered = new HashSet<>();
+        for (String verb : verbs) {
+            String upperCaseVerb = verb.toUpperCase(Locale.ROOT);
+            covered.add(upperCaseVerb);
+            if (upperCaseVerb.equals("GET")) {
+                covered.add("HEAD");
+            }
+        }
+        return Set.copyOf(covered);
+    }
+
+    private boolean coversVerb(String upperCaseMethod) {
+        return verbs.isEmpty() || coveredVerbs.contains(upperCaseMethod);
     }
 
     public boolean matches(String method, String fullUri) {
