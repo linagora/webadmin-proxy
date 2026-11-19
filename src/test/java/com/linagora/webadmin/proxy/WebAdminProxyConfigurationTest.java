@@ -1010,6 +1010,19 @@ class WebAdminProxyConfigurationTest {
         }
 
         @Test
+        void rootPrefixShouldOnlyServeWhatNoOtherPrefixServes() throws Exception {
+            String json = TWO_PROVIDERS
+                .replace("\"path.prefix\": \"/mail\"", "\"path.prefix\": \"\"")
+                .replace("\"path.prefix\": \"/staff\"", "\"path.prefix\": \"/calendar/staff\"");
+            WebAdminProxyConfiguration config = WebAdminProxyConfiguration.from(writeConfig(json));
+
+            assertThat(config.pathPrefixOf("/calendar/staff")).contains("/calendar/staff");
+            assertThat(config.pathPrefixOf("/calendar/staffing")).contains("/calendar");
+            assertThat(config.pathPrefixOf("/calendars")).contains("");
+            assertThat(config.pathPrefixOf("/")).contains("");
+        }
+
+        @Test
         void unknownProviderShouldBeRejected() throws Exception {
             File config = writeConfig(TWO_PROVIDERS.replace("\"oidc.provider\": \"staff\"", "\"oidc.provider\": \"nope\""));
 
