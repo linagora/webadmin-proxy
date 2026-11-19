@@ -24,7 +24,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -79,11 +78,23 @@ public record WebAdminProxyConfiguration(int port,
      * The longest prefix wins, so that {@code /calendar/admin} entries are not served by {@code /calendar} ones.
      */
     public Optional<String> pathPrefixOf(String rawPath) {
-        return clients.stream()
-            .map(e -> e.getValue().pathPrefix())
-            .distinct()
-            .filter(prefix -> prefix.isEmpty() || rawPath.equals(prefix) || rawPath.startsWith(prefix + "/"))
-            .max(Comparator.comparingInt(String::length));
+        String longest = null;
+        for (int i = 0; i < clients.size(); i++) {
+            String prefix = clients.get(i).getValue().pathPrefix();
+            if ((longest == null || prefix.length() > longest.length()) && servesPath(prefix, rawPath)) {
+                longest = prefix;
+            }
+        }
+        return Optional.ofNullable(longest);
+    }
+
+    /**
+     * A prefix only serves whole segments: {@code /calendarx} is not under {@code /calendar}.
+     */
+    private static boolean servesPath(String prefix, String rawPath) {
+        return prefix.isEmpty()
+            || (rawPath.startsWith(prefix)
+                && (rawPath.length() == prefix.length() || rawPath.charAt(prefix.length()) == '/'));
     }
 
     public OidcConfiguration oidcProviderFor(String pathPrefix) {
