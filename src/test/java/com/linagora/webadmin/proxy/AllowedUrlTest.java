@@ -587,6 +587,22 @@ class AllowedUrlTest {
         }
 
         @Test
+        void allowRuleShouldNotMatchParamRepeatedThreeTimes() {
+            AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?domain={domain}");
+            assertThat(rule.matches("GET", "/quota/users?domain=mine.com&domain=mine.com&domain=other.com")).isFalse();
+        }
+
+        @Test
+        void rulesSharingATargetShouldAllSeeTheRepetition() {
+            AllowedUrl.Target target = AllowedUrl.Target.of("DELETE", "/messages?user=me@mine.com&user=victim@other.com");
+            AllowedUrl deny = new AllowedUrl(List.of(), "/messages?user={user}", true);
+            AllowedUrl allow = new AllowedUrl(List.of(), "/messages?user=%@{domain}");
+            assertThat(deny.match(target)).isPresent();
+            assertThat(allow.match(target)).isEmpty();
+            assertThat(deny.match(target)).isPresent();
+        }
+
+        @Test
         void allowRuleShouldIgnoreRepetitionOfUnconstrainedParam() {
             AllowedUrl rule = new AllowedUrl(List.of(), "/quota/users?domain={domain}");
             assertThat(rule.match("GET", "/quota/users?domain=mine.com&component=a&component=b"))
