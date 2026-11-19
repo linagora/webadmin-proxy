@@ -16,7 +16,6 @@ package com.linagora.webadmin.proxy;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,9 +23,47 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
-import java.util.stream.Collectors;
 
 public class AllowedUrl {
+
+    /**
+     * A request target, as every rule reads it. What only depends on the request (the segment-wise decoded
+     * path) is computed once, on first use, and shared by all the rules tried for this request.
+     */
+    public static final class Target {
+        private final String method;
+        private final String rawPath;
+        private final String rawQuery;
+        private String decodedPath;
+
+        private Target(String method, String rawPath, String rawQuery) {
+            this.method = method;
+            this.rawPath = rawPath;
+            this.rawQuery = rawQuery;
+        }
+
+        public static Target of(String method, String fullUri) {
+            int queryIdx = fullUri.indexOf('?');
+            String rawPath = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
+            String rawQuery = queryIdx >= 0 ? fullUri.substring(queryIdx + 1) : "";
+            return new Target(method, rawPath, rawQuery);
+        }
+
+        public String method() {
+            return method;
+        }
+
+        public String rawQuery() {
+            return rawQuery;
+        }
+
+        String decodedPath() {
+            if (decodedPath == null) {
+                decodedPath = segmentWiseDecodedPath(rawPath);
+            }
+            return decodedPath;
+        }
+    }
 
     private record CompiledQueryParam(Pattern pattern, List<String> variableNames, Map<String, String> groupNames) {
         CompiledQueryParam {
@@ -81,15 +118,18 @@ public class AllowedUrl {
      * matches the given method and full URI, empty otherwise.
      */
     public Optional<Map<String, String>> match(String method, String fullUri) {
-        if (!coversVerb(method)) {
+        return match(Target.of(method, fullUri));
+    }
+
+    /**
+     * Same as {@link #match(String, String)}, for a target built once and shared by all the rules tried.
+     */
+    public Optional<Map<String, String>> match(Target target) {
+        if (!coversVerb(target.method())) {
             return Optional.empty();
         }
 
-        int queryIdx = fullUri.indexOf('?');
-        String rawPath = queryIdx >= 0 ? fullUri.substring(0, queryIdx) : fullUri;
-        String queryString = queryIdx >= 0 ? fullUri.substring(queryIdx + 1) : "";
-
-        Matcher m = compiledPathPattern.matcher(segmentWiseDecodedPath(rawPath));
+        Matcher m = compiledPathPattern.matcher(target.decodedPath());
         if (!m.matches()) {
             return Optional.empty();
         }
@@ -100,7 +140,7 @@ public class AllowedUrl {
         if (compiledQueryParams.isEmpty()) {
             return Optional.of(captured);
         }
-        Map<String, List<String>> requestParams = parseQueryString(queryString);
+        Map<String, List<String>> requestParams = parseQueryString(target.rawQuery());
         for (Map.Entry<String, CompiledQueryParam> entry : compiledQueryParams.entrySet()) {
             String paramName = entry.getKey();
             CompiledQueryParam cqp = entry.getValue();
@@ -214,12 +254,36 @@ public class AllowedUrl {
      * stays inside its segment. Each segment is thus decoded on its own, and its '%' and '/' re-escaped, so
      * that a '{var}' or '%' never spans more than one backend segment. Captured values are decoded afterwards.
      */
-    private static String segmentWiseDecodedPath(String rawPath) {
-        return Arrays.stream(rawPath.split("/", -1))
-            .map(segment -> decodePath(segment)
-                .replace("%", "%25")
-                .replace("/", "%2F"))
-            .collect(Collectors.joining("/"));
+    static String segmentWiseDecodedPath(String rawPath) {
+        if (rawPath.indexOf('%') < 0) {
+            // Nothing to decode: '+' is kept literally and no segment holds a '/', the path is its own result.
+            return rawPath;
+        }
+        StringBuilder result = new StringBuilder(rawPath.length());
+        int start = 0;
+        while (true) {
+            int end = rawPath.indexOf('/', start);
+            String segment = rawPath.substring(start, end < 0 ? rawPath.length() : end);
+            appendReEscaped(result, segment.indexOf('%') < 0 ? segment : decodePath(segment));
+            if (end < 0) {
+                return result.toString();
+            }
+            result.append('/');
+            start = end + 1;
+        }
+    }
+
+    private static void appendReEscaped(StringBuilder result, String decodedSegment) {
+        for (int i = 0; i < decodedSegment.length(); i++) {
+            char c = decodedSegment.charAt(i);
+            if (c == '%') {
+                result.append("%25");
+            } else if (c == '/') {
+                result.append("%2F");
+            } else {
+                result.append(c);
+            }
+        }
     }
 
     private static Map<String, List<String>> parseQueryString(String queryString) {

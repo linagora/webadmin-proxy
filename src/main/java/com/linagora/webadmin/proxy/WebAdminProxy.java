@@ -306,20 +306,19 @@ public class WebAdminProxy implements Startable {
         if (allowedUrls.isEmpty()) {
             return Mono.empty();
         }
-        Optional<AllowedUrl> firstMatch = allowedUrls.stream()
-            .filter(rule -> rule.match(method, uri).isPresent())
-            .findFirst();
-        if (firstMatch.isEmpty()) {
-            return Mono.error(new AccessForbiddenException(
-                "URL not allowed for client '" + auth.clientId() + "': " + method + " " + uri));
+        AllowedUrl.Target target = AllowedUrl.Target.of(method, uri);
+        for (AllowedUrl rule : allowedUrls) {
+            Optional<Map<String, String>> capturedVars = rule.match(target);
+            if (capturedVars.isPresent()) {
+                if (rule.isDenied()) {
+                    return Mono.error(new AccessForbiddenException(
+                        "URL explicitly denied for client '" + auth.clientId() + "': " + method + " " + uri));
+                }
+                return validatePatternRestrictions(auth, capturedVars.get());
+            }
         }
-        AllowedUrl matchedRule = firstMatch.get();
-        if (matchedRule.isDenied()) {
-            return Mono.error(new AccessForbiddenException(
-                "URL explicitly denied for client '" + auth.clientId() + "': " + method + " " + uri));
-        }
-        Map<String, String> capturedVars = matchedRule.match(method, uri).get();
-        return validatePatternRestrictions(auth, capturedVars);
+        return Mono.error(new AccessForbiddenException(
+            "URL not allowed for client '" + auth.clientId() + "': " + method + " " + uri));
     }
 
     private Mono<Void> validatePatternRestrictions(AuthenticatedRequest auth, Map<String, String> capturedVars) {

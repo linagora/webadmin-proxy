@@ -17,9 +17,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -242,6 +244,37 @@ class AllowedUrlTest {
     void shouldRejectWhenVerbMatchesButPathDoesNot() {
         AllowedUrl rule = new AllowedUrl(List.of("GET"), "/domains");
         assertThat(rule.matches("GET", "/users")).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"/users/a+b@mine.example", "/", "", "/a//b/", "/users/a%2Bb", "/x%2F..%2Fy/z",
+        "/a%25b/c", "/%E2%82%AC/%2f", "/trailing%20/"})
+    void segmentWiseDecodedPathShouldDecodeEachSegmentAndReEscapePercentAndSlash(String rawPath) {
+        String expected = Arrays.stream(rawPath.split("/", -1))
+            .map(segment -> AllowedUrl.decodePath(segment).replace("%", "%25").replace("/", "%2F"))
+            .collect(Collectors.joining("/"));
+        assertThat(AllowedUrl.segmentWiseDecodedPath(rawPath)).isEqualTo(expected);
+    }
+
+    @Test
+    void segmentWiseDecodedPathShouldReturnAPathWithoutPercentUnchanged() {
+        String rawPath = "/users/a+b@mine.example/mailboxes";
+        assertThat(AllowedUrl.segmentWiseDecodedPath(rawPath)).isSameAs(rawPath);
+    }
+
+    @Test
+    void oneTargetShouldBeMatchedByEveryRuleLikeItsUri() {
+        AllowedUrl.Target target = AllowedUrl.Target.of("PUT", "/forwards/a@mine.example/targets/x%2F@ext.example?force=true");
+        List<AllowedUrl> rules = List.of(
+            new AllowedUrl(List.of("GET"), "/forwards/{base}/targets/{destination}"),
+            new AllowedUrl(List.of(), "/forwards/%@{domain}/targets/{destination}?force=true"),
+            new AllowedUrl(List.of("PUT"), "/forwards/{base}/targets/{destination}"),
+            new AllowedUrl(List.of("PUT"), "/forwards/{base}/targets/{destination}?force=false"));
+
+        assertThat(rules).allSatisfy(rule -> assertThat(rule.match(target))
+            .isEqualTo(rule.match("PUT", "/forwards/a@mine.example/targets/x%2F@ext.example?force=true")));
+        assertThat(rules.get(1).match(target))
+            .contains(Map.of("domain", "mine.example", "destination", "x/@ext.example"));
     }
 
     @Nested
