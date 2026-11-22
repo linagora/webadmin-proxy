@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - The mail baseline no longer lets a tenant domain administrator run platform-wide tasks through `/messages` and `/quota/users`: these rules are now bound to the verb for which James honours the `user` and `domain` parameters (`DELETE /messages`, `GET /quota/users`), so other verbs, such as POST triage, SolveInconsistencies or RecomputeCurrentQuotas, no longer apply to every tenant (#53)
 - A domain administrator can no longer copy templates of a user of another tenant: template provisioning (`action=provision&from=...`) is now only allowed from a user of the administrator's own domain, including in the `linagora-mail-functional-admin.json` and `linagora-mail-functional-baseline.json` profiles (#54, #55, #56, #57)
+- Path variables in URL rules are now matched segment by segment, so an encoded slash (`%2F`) stays inside its segment as it does for James: a deny rule such as `/address/forwards/%@{domain}/targets/{destination}` is no longer bypassed by a target like `me%2F@attacker.example` that a broader `*` allow rule would have granted (#60, #61)
+
+## [1.2.1] - 2026-11-18
+
+### Changed
+
+- The published Docker images are now always built on a freshly pulled base image, so they no longer risk shipping a stale `eclipse-temurin` (#59)
+
+### Security
+
+- The mail baseline no longer lets a tenant domain administrator run platform-wide tasks through `/messages` and `/quota/users`: these rules are now bound to the verb for which James honours the `user` and `domain` parameters (`DELETE /messages`, `GET /quota/users`), so other verbs, such as POST triage, SolveInconsistencies or RecomputeCurrentQuotas, no longer apply to every tenant (#53)
+- A domain administrator can no longer copy templates of a user of another tenant: template provisioning (`action=provision&from=...`) is now only allowed from a user of the administrator's own domain, including in the `linagora-mail-functional-admin.json` and `linagora-mail-functional-baseline.json` profiles (#54, #55, #56, #57)
 
 ## [1.2.0] - 2026-11-12
 
