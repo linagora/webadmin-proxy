@@ -35,7 +35,15 @@
       "PUT",
       "DELETE"
     ],
-    "endpoint": "/quota/users/%@{domain}/size"
+    "endpoint": "/quota/users/%@{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/quota/users/%@{domain}/*"
   },
   {
     "denied": true,
@@ -152,6 +160,13 @@
   {
     "denied": true,
     "verb": [
+      "POST"
+    ],
+    "endpoint": "/domains/{domain}/templates"
+  },
+  {
+    "denied": true,
+    "verb": [
       "PUT",
       "DELETE"
     ],
@@ -214,9 +229,18 @@
   {
     "denied": true,
     "verb": [
-      "PUT"
+      "PUT",
+      "DELETE"
     ],
     "endpoint": "/quota/domains/{domain}"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/quota/domains/{domain}/*"
   },
   {
     "denied": true,
