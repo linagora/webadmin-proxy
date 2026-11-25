@@ -4416,7 +4416,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalAdminProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
+    class LinagoraMailFunctionalAdminProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract,
+        BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -4587,7 +4588,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
+    class LinagoraMailFunctionalBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract,
+        BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -4705,7 +4707,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class FunctionalAdminMailBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract {
+    class FunctionalAdminMailBaselineProfile extends ShippedProfile implements TenantTemplateProvisioningGrantedContract,
+        BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -4810,8 +4813,92 @@ class WebAdminProxyIntegrationTest {
         }
     }
 
+    /** Tenant support profiles, which refuse template provisioning even within {@code example.com}. */
+    interface TenantTemplateProvisioningDeniedContract extends TenantTemplateProvisioningContract {
+
+        @Test
+        default void shouldReturn403WhenProvisioningUserTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/users/bob@example.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
+        }
+
+        @Test
+        default void shouldReturn403WhenProvisioningDomainTemplatesFromUserOfOwnDomain() {
+            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com").then().statusCode(403);
+            proxy().when().post("/domains/example.com/templates?action=provision&from=carol@example.com&folderName=INBOX&prune=true")
+                .then().statusCode(403);
+            proxy().when().post("/domains/example.com/templates?from=carol@example.com&action=provision&overwriteExisting=true")
+                .then().statusCode(403);
+        }
+    }
+
+    /**
+     * Every profile including {@code functional-admin-mail-baseline.json}: the baseline withholds the domain-wide
+     * wipe, the domain and account lifecycle, and the quota routes setting both limits at once, whatever the
+     * profile grants below the domain or the user.
+     */
+    interface BaselineDestructiveWritesContract {
+
+        io.restassured.specification.RequestSpecification proxy();
+
+        @Test
+        default void shouldReturn403WhenDeletingAllUsersDataOfADomain() {
+            proxy().when().post("/domains/example.com?action=deleteData").then().statusCode(403);
+        }
+
+        @Test
+        default void shouldReturn403WhenCreatingOrRemovingADomain() {
+            proxy().when().delete("/domains/example.com").then().statusCode(403);
+            proxy().when().put("/domains/example.com").then().statusCode(403);
+        }
+
+        @Test
+        default void shouldReturn403WhenWritingAnAccount() {
+            proxy().body("{\"password\":\"secret\"}").when().put("/users/bob@example.com?force").then().statusCode(403);
+            proxy().body("{\"password\":\"secret\"}").when().put("/users/new@example.com").then().statusCode(403);
+            proxy().when().delete("/users/bob@example.com").then().statusCode(403);
+        }
+
+        @Test
+        default void shouldReturn403WhenSettingBothQuotaLimitsAtOnce() {
+            proxy().body("{\"count\":-1,\"size\":-1}").when().put("/quota/users/bob@example.com").then().statusCode(403);
+            proxy().body("{\"count\":-1,\"size\":-1}").when().put("/quota/domains/example.com").then().statusCode(403);
+        }
+
+        @Test
+        default void shouldAllowReadingAnAccountAndTheDomain() {
+            proxy().when().get("/users/bob@example.com/mailboxes").then().statusCode(200);
+            proxy().when().get("/domains/example.com/aliases").then().statusCode(200);
+            proxy().when().get("/quota/users/bob@example.com").then().statusCode(200);
+            proxy().when().get("/quota/domains/example.com").then().statusCode(200);
+        }
+    }
+
+    /** Tenant support profiles: {@code users.quota.save}, {@code users.quota.clear} and {@code domains.quota.save} are refused. */
+    interface TenantQuotaWritesDeniedContract {
+
+        io.restassured.specification.RequestSpecification proxy();
+
+        @ParameterizedTest
+        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com"})
+        default void shouldReturn403OnEveryQuotaWrite(String base) {
+            proxy().when().put(base).then().statusCode(403);
+            proxy().when().put(base + "/count").then().statusCode(403);
+            proxy().when().delete(base + "/count").then().statusCode(403);
+            proxy().when().put(base + "/size").then().statusCode(403);
+            proxy().when().delete(base + "/size").then().statusCode(403);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com"})
+        default void shouldAllowReadingQuota(String base) {
+            proxy().when().get(base).then().statusCode(200);
+            proxy().when().get(base + "/size").then().statusCode(200);
+        }
+    }
+
     @Nested
-    class LinagoraMailFunctionalSupportProfile extends ShippedProfile implements TenantTemplateProvisioningContract {
+    class LinagoraMailFunctionalSupportProfile extends ShippedProfile implements TenantTemplateProvisioningDeniedContract,
+        BaselineDestructiveWritesContract, TenantQuotaWritesDeniedContract {
 
         @Override
         String profile() {
@@ -4959,7 +5046,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailSupportProfile extends ShippedProfile {
+    class LinagoraMailSupportProfile extends ShippedProfile implements BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -5135,7 +5222,7 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailSupportProfileLdapRest extends GlobalLdapRestManagedProfile {
+    class LinagoraMailSupportProfileLdapRest extends GlobalLdapRestManagedProfile implements BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -5156,7 +5243,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalGodLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract {
+    class LinagoraMailFunctionalGodLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract,
+        BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -5179,7 +5267,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalAdminLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract {
+    class LinagoraMailFunctionalAdminLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningGrantedContract,
+        BaselineDestructiveWritesContract {
 
         @Override
         String profile() {
@@ -5201,7 +5290,8 @@ class WebAdminProxyIntegrationTest {
     }
 
     @Nested
-    class LinagoraMailFunctionalSupportLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningContract {
+    class LinagoraMailFunctionalSupportLdapRest extends FunctionalLdapRestManagedProfile implements TenantTemplateProvisioningDeniedContract,
+        BaselineDestructiveWritesContract, TenantQuotaWritesDeniedContract {
 
         @Override
         String profile() {

@@ -331,6 +331,16 @@ user's folder into the target, so a source in another domain would expose anothe
 Rules placed before the baseline still win: an earlier provisioning grant must bind `from` the same
 way (`…templates?action=provision&from=%@{domain}&{params}`).
 
+The broad `/domains/{domain}` and `/users/%@{domain}` rules carry no verb, so leading denies withhold
+what no tenant role should get from them: the domain-wide wipe (`POST /domains/{domain}?action=deleteData`,
+which erases the mailboxes of every user of the domain), creating or removing the domain itself
+(`PUT`/`DELETE /domains/{domain}`, which stops its inbound mail), and creating, overwriting or deleting
+an account (`PUT`/`DELETE /users/{user}`: `PUT …?force` resets the password of an existing user, so a
+tenant role could log in as any user of its domain, its administrators included, wherever James checks
+its own passwords). They also deny the quota routes setting both limits at once
+(`PUT /quota/users/{user}`, `PUT /quota/domains/{domain}`), which the frontend never calls: a profile
+withholding quota writes only has to deny `…/count` and `…/size`. Reads of these resources stay granted.
+
 The `/messages` and `/quota/users` rules are bound to the one verb the backend scopes to the given
 `user` or `domain`. On every other verb James ignores that parameter and acts on the whole platform:
 `POST /messages?action=triage` runs a rule over the mailboxes of every user of every domain,
@@ -421,7 +431,8 @@ Everything a support agent may *change* comes from the trailing
 
 **Withholds**: the mail admin profile's deny list, plus destructive operations a support agent must
 never perform even inside a tenant — deleting a user's mailboxes, deleting team mailboxes or their
-folders, changing domain rate limits, renaming users, and any write to domain quotas.
+folders, changing domain rate limits, renaming users, and any write to domain quotas. Through the
+included baseline it also withholds removing a domain and creating, overwriting or deleting an account.
 
 **Use as-is**: yes. Pair it with a `domain` restriction only if support agents are themselves
 tenant-bound; a Linagora support agent normally is not, and the included baseline then grants the
