@@ -4879,7 +4879,8 @@ class WebAdminProxyIntegrationTest {
         io.restassured.specification.RequestSpecification proxy();
 
         @ParameterizedTest
-        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com"})
+        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com",
+            "/domains/example.com/team-mailboxes/sales/quota/limit"})
         default void shouldReturn403OnEveryQuotaWrite(String base) {
             proxy().when().put(base).then().statusCode(403);
             proxy().when().put(base + "/count").then().statusCode(403);
@@ -4889,7 +4890,8 @@ class WebAdminProxyIntegrationTest {
         }
 
         @ParameterizedTest
-        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com"})
+        @ValueSource(strings = {"/quota/users/bob@example.com", "/quota/domains/example.com",
+            "/domains/example.com/team-mailboxes/sales/quota/limit"})
         default void shouldAllowReadingQuota(String base) {
             proxy().when().get(base).then().statusCode(200);
             proxy().when().get(base + "/size").then().statusCode(200);
