@@ -194,7 +194,15 @@
       "PUT",
       "DELETE"
     ],
-    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/quota/limit/size"
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/quota/limit"
+  },
+  {
+    "denied": true,
+    "verb": [
+      "PUT",
+      "DELETE"
+    ],
+    "endpoint": "/domains/{domain}/team-mailboxes/{mailbox}/quota/limit/*"
   },
   {
     "denied": true,
