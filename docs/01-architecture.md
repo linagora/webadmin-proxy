@@ -62,6 +62,8 @@ Resolved tokens are cached by their raw value. The cache entry stores the full `
 
 When the OIDC provider terminates a session it may call `POST /backchannel-logout` on the proxy's admin port with a signed logout JWT. The proxy extracts the `sid` claim from the JWT payload and evicts all cache entries sharing that session ID.
 
+The session ID is also remembered as logged out for `oidc.token.cache.expiration`: a token of that session is refused with 401 during that time, even if the OIDC provider still reports it as active. This covers a token whose validation was in flight when the logout arrived.
+
 ## Observability
 
 When `self.webadmin.enabled: true`, the proxy starts a Spark/Jetty server on `self.webadmin.port` exposing:
