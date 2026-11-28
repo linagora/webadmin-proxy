@@ -2662,11 +2662,11 @@ class WebAdminProxyIntegrationTest {
             .when().post("/backchannel-logout")
             .then().statusCode(200);
 
-            // Next request must re-validate with OIDC
+            // Next request must re-validate with OIDC, and is refused as its session was logged out
             given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
                 .when().get("/domains")
-                .then().statusCode(200);
+                .then().statusCode(401);
 
             oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
         }
@@ -2764,11 +2764,11 @@ class WebAdminProxyIntegrationTest {
             .when().post("/backchannel-logout")
             .then().statusCode(200);
 
-            // Next request must re-validate with OIDC
+            // Next request must re-validate with OIDC, and is refused as its session was logged out
             given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
                 .when().get("/domains")
-                .then().statusCode(200);
+                .then().statusCode(401);
 
             oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
         }
@@ -2812,7 +2812,7 @@ class WebAdminProxyIntegrationTest {
             given().port(proxyServer.getPort())
                 .header("Authorization", "Bearer " + VALID_TOKEN)
                 .when().get("/domains")
-                .then().statusCode(200);
+                .then().statusCode(401);
 
             oidcMock.verify(request().withPath("/introspect"), VerificationTimes.exactly(2));
         }

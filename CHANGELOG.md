@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- A back-channel logout also drops a token whose validation was in flight, and a token reloaded after its cache entry expired: such a token was left cached, unknown to its session, until `oidc.token.cache.expiration`. A token of a logged-out session is now refused with 401 for `oidc.token.cache.expiration` after the logout, even if the OIDC provider still reports it as active
+
 ### Security
 
 - The mail baseline no longer lets a tenant domain administrator run platform-wide tasks through `/messages` and `/quota/users`: these rules are now bound to the verb for which James honours the `user` and `domain` parameters (`DELETE /messages`, `GET /quota/users`), so other verbs, such as POST triage, SolveInconsistencies or RecomputeCurrentQuotas, no longer apply to every tenant (#53)
